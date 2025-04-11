@@ -5,11 +5,11 @@ linters-settings:
   gocyclo:
     min-complexity: 15
   goimports:
-    local-prefixes: github.com/golang-templates/seed
+    local-prefixes: github.com/shimizu1995/secure-shell-server
   govet:
     enable-all: true
     disable:
-    - fieldalignment
+      - fieldalignment
   misspell:
     locale: US
   nolintlint:

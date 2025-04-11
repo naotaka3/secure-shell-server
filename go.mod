@@ -1,4 +1,4 @@
-module github.com/golang-templates/seed
+module github.com/shimizu1995/secure-shell-server
 
 go 1.24.0
 
@@ -8,6 +8,8 @@ tool (
 	github.com/goreleaser/goreleaser/v2
 	golang.org/x/vuln/cmd/govulncheck
 )
+
+require mvdan.cc/sh/v3 v3.11.0
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
