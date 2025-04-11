@@ -1,5 +1,4 @@
 SHELL := /bin/bash
-GOPATH := /Users/yu.shimizu/go
 GOMODCACHE := $(GOPATH)/pkg/mod
 GOCACHE := $(GOPATH)/.cache/go-build
 
