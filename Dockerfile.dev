@@ -1,0 +1,19 @@
+FROM golang:1.24
+
+WORKDIR /app
+
+# Install development tools
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest \
+    && go install github.com/client9/misspell/cmd/misspell@latest \
+    && go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Copy go module files 
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Install make
+RUN apt-get update && apt-get install -y make
+
+COPY . .
+
+CMD ["make", "help"]

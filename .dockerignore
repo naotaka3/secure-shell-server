@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+.github
+
+# Build artifacts
+dist
+coverage.html
+coverage.out
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+
+# Editor configs
+.vscode
+.idea
+*.swp
+*.swo

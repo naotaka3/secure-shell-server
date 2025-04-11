@@ -1,4 +1,7 @@
 SHELL := /bin/bash
+GOPATH := /Users/yu.shimizu/go
+GOMODCACHE := $(GOPATH)/pkg/mod
+GOCACHE := $(GOPATH)/.cache/go-build
 
 .DEFAULT_GOAL := all
 
@@ -23,36 +26,36 @@ clean: ## remove files created during build pipeline
 	rm -rf dist
 	rm -f coverage.*
 	rm -f '"$(shell go env GOCACHE)/../golangci-lint"'
-	go clean -i -cache -testcache -modcache -fuzzcache -x
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go clean -i -cache -testcache -modcache -fuzzcache -x
 
 .PHONY: mod
 mod: ## go mod tidy
-	go mod tidy
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go mod tidy
 
 .PHONY: gen
 gen: ## go generate
-	go generate ./...
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go generate ./...
 
 .PHONY: build
-build: ## goreleaser build
-	go tool goreleaser build --clean --single-target --snapshot
+build: ## go build
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go build -o ./cmd/secure-shell/secure-shell ./cmd/secure-shell/main.go
 
 .PHONY: spell
 spell: ## misspell
-	go tool misspell -error -locale=US -w **.md
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go tool misspell -error -locale=US -w **.md
 
 .PHONY: lint
 lint: ## golangci-lint
-	go tool golangci-lint run --fix
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) GOLANGCI_LINT_CACHE=$(GOPATH)/.cache/golangci-lint go tool golangci-lint run --fix
 
 .PHONY: vuln
 vuln: ## govulncheck
-	go tool govulncheck ./...
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go tool govulncheck ./...
 
 .PHONY: test
 test: ## go test
-	go test -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./...
-	go tool cover -html=coverage.out -o coverage.html
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go test -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./...
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go tool cover -html=coverage.out -o coverage.html
 
 .PHONY: diff
 diff: ## git diff

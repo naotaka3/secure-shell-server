@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  secure-shell-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./examples:/app/examples
+    command: ["run", "-cmd=ls -la"]
+    environment:
+      - LOG_LEVEL=info
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs: 
+      - /tmp
+
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+    command: ["sh"]
+    stdin_open: true
+    tty: true
