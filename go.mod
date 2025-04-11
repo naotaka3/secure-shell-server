@@ -1,4 +1,4 @@
-module github.com/golang-templates/seed
+module github.com/shimizu1995/secure-shell-server
 
 go 1.24.0
 
