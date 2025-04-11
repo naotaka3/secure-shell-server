@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	var exitCode int = run()
+	exitCode := run()
 	os.Exit(exitCode)
 }
 
