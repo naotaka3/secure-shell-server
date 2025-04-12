@@ -103,7 +103,7 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 	// Validate script
 	valid, err := r.validator.ValidateScript(script)
 	if !valid || err != nil {
-		return fmt.Errorf("script validation failed: %w", err)
+		return fmt.Errorf("script execution error: %w", err)
 	}
 
 	// Parse the script
