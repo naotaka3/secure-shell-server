@@ -21,8 +21,6 @@ func main() {
 
 func run() int {
 	// Define command-line flags
-	cmdToExec := flag.String("cmd", "", "Command to execute")
-	scriptFile := flag.String("file", "", "Script file to execute")
 	scriptStr := flag.String("script", "", "Script string to execute")
 	allowedCommands := flag.String("allow", "ls,echo,cat", "Comma-separated list of allowed commands")
 	maxTime := flag.Int("timeout", config.DefaultExecutionTimeout, "Maximum execution time in seconds")
@@ -65,30 +63,6 @@ func run() int {
 	var err error
 
 	switch {
-	case *cmdToExec != "":
-		// Execute a single command
-		args := strings.Fields(*cmdToExec)
-		if len(args) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: Empty command provided\n")
-			return 1
-		}
-
-		err = safeRunner.Run(ctx, args)
-
-	case *scriptFile != "":
-		// Execute a script file
-		var file *os.File
-		var fileErr error
-		file, fileErr = os.Open(*scriptFile)
-		if fileErr != nil {
-			fmt.Fprintf(os.Stderr, "Error opening script file: %v\n", fileErr)
-			return 1
-		}
-		// Close the file when we're done
-		defer file.Close()
-
-		err = safeRunner.RunScriptFile(ctx, file)
-
 	case *scriptStr != "":
 		// Execute a script string
 		err = safeRunner.RunScript(ctx, *scriptStr)

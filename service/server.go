@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -115,22 +114,11 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 	// Log the command attempt
 	s.logger.LogInfof("Command attempt: %s in directory: %s", commandStr, directory)
 
-	// Parse the command into args
-	args, err := parseCommand(commandStr)
-	if err != nil {
-		s.logger.LogErrorf("Failed to parse command: %v", err)
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to parse command: %v", err)), nil
-	}
-
-	if len(args) == 0 {
-		return mcp.NewToolResultError("No command provided"), nil
-	}
-
-	// Validate the command and directory
-	allowed, err := s.validator.ValidateCommandInDirectory(args[0], args[1:], directory)
-	if !allowed || err != nil {
-		s.logger.LogErrorf("Command validation failed: %v", err)
-		return mcp.NewToolResultError(fmt.Sprintf("Command validation failed: %v", err)), nil
+	// First validate if the directory is allowed
+	dirAllowed, dirMessage := s.validator.IsDirectoryAllowed(directory)
+	if !dirAllowed {
+		s.logger.LogErrorf("Directory validation failed: %s", dirMessage)
+		return mcp.NewToolResultError("Directory validation failed: " + dirMessage), nil
 	}
 
 	// Create a buffer to capture the output
@@ -146,7 +134,7 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 	tempRunner.SetOutputs(outputBuffer, outputBuffer)
 
 	// Execute the command
-	err = tempRunner.Run(ctx, args)
+	err := tempRunner.RunScript(ctx, commandStr)
 	if err != nil {
 		s.logger.LogErrorf("Command execution failed: %v", err)
 		return mcp.NewToolResultError(fmt.Sprintf("Command execution failed: %v", err)), nil
@@ -154,18 +142,6 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 
 	// Return the command output
 	return mcp.NewToolResultText(outputBuffer.String()), nil
-}
-
-// parseCommand splits a command string into arguments.
-func parseCommand(cmd string) ([]string, error) {
-	// Return early for empty commands
-	if strings.TrimSpace(cmd) == "" {
-		return nil, errors.New("empty command")
-	}
-
-	// Simple splitting by space for now
-	// This could be enhanced to handle quotes and other special characters
-	return strings.Fields(cmd), nil
 }
 
 // TestHandleRunCommand is a wrapper for handleRunCommand for testing.
@@ -186,11 +162,6 @@ func (s *Server) TestHandleRunCommand(ctx context.Context, cmd string, dir strin
 
 	// For testing, convert the result to a simpler structure
 	return result, nil
-}
-
-// TestParseCommand is a wrapper for parseCommand for testing.
-func TestParseCommand(cmd string) ([]string, error) {
-	return parseCommand(cmd)
 }
 
 // ServeStdio starts an MCP server using stdin/stdout for communication.

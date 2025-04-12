@@ -55,8 +55,6 @@ func run() int {
 		os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
 
 		// Define command-line flags
-		cmdToExec := flag.String("cmd", "", "Command to execute")
-		scriptFile := flag.String("file", "", "Script file to execute")
 		scriptStr := flag.String("script", "", "Script string to execute")
 		allowedCommands := flag.String("allow", "ls,echo,cat", "Comma-separated list of allowed commands")
 		maxTime := flag.Int("timeout", config.DefaultExecutionTimeout, "Maximum execution time in seconds")
@@ -66,7 +64,7 @@ func run() int {
 		flag.Parse()
 
 		// Configure and run the secure shell
-		return runSecureShell(cmdToExec, scriptFile, scriptStr, allowedCommands, maxTime, workingDir)
+		return runSecureShell(scriptStr, allowedCommands, maxTime, workingDir)
 
 	case "server":
 		return runServer()
@@ -134,7 +132,7 @@ func runServer() int {
 	return 0
 }
 
-func runSecureShell(cmdToExec, scriptFile, scriptStr, _ *string, maxTime *int, workingDir *string) int {
+func runSecureShell(scriptStr, _ *string, maxTime *int, workingDir *string) int {
 	// Create a configuration object
 	cfg := config.NewDefaultConfig()
 	cfg.WorkingDir = *workingDir
@@ -151,29 +149,6 @@ func runSecureShell(cmdToExec, scriptFile, scriptStr, _ *string, maxTime *int, w
 	var err error
 
 	switch {
-	case *cmdToExec != "":
-		// Execute a single command
-		args := flag.Args()
-		if len(args) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: Empty command provided\n")
-			return 1
-		}
-
-		err = safeRunner.Run(context.Background(), args)
-
-	case *scriptFile != "":
-		// Execute a script file
-		var file *os.File
-		var fileErr error
-		file, fileErr = os.Open(*scriptFile)
-		if fileErr != nil {
-			fmt.Fprintf(os.Stderr, "Error opening script file: %v\n", fileErr)
-			return 1
-		}
-		defer file.Close()
-
-		err = safeRunner.RunScriptFile(context.Background(), file)
-
 	case *scriptStr != "":
 		// Execute a script string
 		err = safeRunner.RunScript(context.Background(), *scriptStr)

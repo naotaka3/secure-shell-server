@@ -25,28 +25,19 @@ func main() {
 	validatorObj := validator.New(cfg, log)
 	safeRunner := runner.New(cfg, validatorObj, log)
 
-	// Execute a command
-	args := []string{"ls", "-l"}
-	fmt.Printf("Executing command: %v\n", args)
-	err := safeRunner.Run(context.Background(), args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
 	// Execute a script
 	script := "echo 'Hello, World!'; ls -l"
 	fmt.Printf("\nExecuting script: %s\n", script)
-	err = safeRunner.RunScript(context.Background(), script)
+	err := safeRunner.RunScript(context.Background(), script)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Try to execute a disallowed command
-	disallowedArgs := []string{"rm", "-rf", "/tmp/test"}
-	fmt.Printf("\nAttempting to execute disallowed command: %v\n", disallowedArgs)
-	err = safeRunner.Run(context.Background(), disallowedArgs)
+	disallowedScript := "rm -rf /tmp/test"
+	fmt.Printf("\nAttempting to execute disallowed script: %s\n", disallowedScript)
+	err = safeRunner.RunScript(context.Background(), disallowedScript)
 	if err != nil {
 		fmt.Printf("Expected error: %v\n", err)
 	} else {
