@@ -95,23 +95,6 @@ func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
 	return false, fmt.Sprintf("directory %q is not allowed: %s", dir, v.config.DefaultErrorMessage)
 }
 
-// ValidateCommandInDirectory checks if a command is allowed to run in a specific directory.
-func (v *CommandValidator) ValidateCommandInDirectory(cmd string, args []string, dir string) (bool, error) {
-	// First check if the directory is allowed
-	allowed, message := v.IsDirectoryAllowed(dir)
-	if !allowed {
-		return false, fmt.Errorf("%s", message)
-	}
-
-	// Then check if the command itself is allowed
-	allowed, message = v.validateCommand(cmd, args)
-	if !allowed {
-		return false, fmt.Errorf("%s", message)
-	}
-
-	return true, nil
-}
-
 // validateCommand checks if a command is allowed based on the configuration.
 func (v *CommandValidator) validateCommand(cmd string, args []string) (bool, string) {
 	// Check if the command is explicitly denied

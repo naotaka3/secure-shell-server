@@ -45,8 +45,68 @@ func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
 	r.stderr = stderr
 }
 
+// RunScript runs a shell script.
+func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
+	// Validate script
+	valid, err := r.validator.ValidateScript(script)
+	if !valid || err != nil {
+		return fmt.Errorf("script execution error: %w", err)
+	}
+
+	// Parse the script
+	parser := syntax.NewParser()
+	prog, err := parser.Parse(strings.NewReader(script), "")
+	if err != nil {
+		r.logger.LogErrorf("Parse error: %v", err)
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	// Create a custom runner for interp
+	execHandler := func(ctx context.Context, args []string) error {
+		return r.run(ctx, args)
+	}
+
+	// Set a timeout context if MaxExecutionTime is set
+	if r.config.MaxExecutionTime > 0 {
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(r.config.MaxExecutionTime)*time.Second)
+		defer cancel()
+		ctx = timeoutCtx
+	}
+
+	// Convert map to environment string pairs
+	restrictedEnv := map[string]string{
+		"PATH": "/usr/bin:/bin",
+	}
+	envPairs := make([]string, 0, len(restrictedEnv))
+	for k, v := range restrictedEnv {
+		envPairs = append(envPairs, k+"="+v)
+	}
+
+	// Run the script with proper options
+	runner, err := interp.New(
+		interp.ExecHandlers(func(_ interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+			return execHandler
+		}),
+		interp.StdIO(nil, r.stdout, r.stderr),
+		interp.Env(expand.ListEnviron(envPairs...)),
+	)
+	// Run the script
+	if err != nil {
+		r.logger.LogErrorf("Interpreter creation error: %v", err)
+		return fmt.Errorf("interpreter creation error: %w", err)
+	}
+
+	err = runner.Run(ctx, prog)
+	if err != nil {
+		r.logger.LogErrorf("Script execution error: %v", err)
+		return fmt.Errorf("script execution error: %w", err)
+	}
+
+	return nil
+}
+
 // Run runs a shell command with args.
-func (r *SafeRunner) Run(ctx context.Context, args []string) error {
+func (r *SafeRunner) run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("no command provided")
 	}
@@ -96,79 +156,4 @@ func (r *SafeRunner) Run(ctx context.Context, args []string) error {
 	}
 
 	return nil
-}
-
-// RunScript runs a shell script.
-func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
-	// Validate script
-	valid, err := r.validator.ValidateScript(script)
-	if !valid || err != nil {
-		return fmt.Errorf("script execution error: %w", err)
-	}
-
-	// Parse the script
-	parser := syntax.NewParser()
-	prog, err := parser.Parse(strings.NewReader(script), "")
-	if err != nil {
-		r.logger.LogErrorf("Parse error: %v", err)
-		return fmt.Errorf("parse error: %w", err)
-	}
-
-	// Create a custom runner for interp
-	execHandler := func(ctx context.Context, args []string) error {
-		return r.Run(ctx, args)
-	}
-
-	// Set a timeout context if MaxExecutionTime is set
-	if r.config.MaxExecutionTime > 0 {
-		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(r.config.MaxExecutionTime)*time.Second)
-		defer cancel()
-		ctx = timeoutCtx
-	}
-
-	// Convert map to environment string pairs
-	restrictedEnv := map[string]string{
-		"PATH": "/usr/bin:/bin",
-	}
-	envPairs := make([]string, 0, len(restrictedEnv))
-	for k, v := range restrictedEnv {
-		envPairs = append(envPairs, k+"="+v)
-	}
-
-	// Run the script with proper options
-	runner, err := interp.New(
-		interp.ExecHandlers(func(_ interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-			return execHandler
-		}),
-		interp.StdIO(nil, r.stdout, r.stderr),
-		interp.Env(expand.ListEnviron(envPairs...)),
-	)
-	// Run the script
-	if err != nil {
-		r.logger.LogErrorf("Interpreter creation error: %v", err)
-		return fmt.Errorf("interpreter creation error: %w", err)
-	}
-
-	err = runner.Run(ctx, prog)
-	if err != nil {
-		r.logger.LogErrorf("Script execution error: %v", err)
-		return fmt.Errorf("script execution error: %w", err)
-	}
-
-	return nil
-}
-
-// RunScriptFile runs a shell script from a reader.
-func (r *SafeRunner) RunScriptFile(ctx context.Context, reader io.Reader) error {
-	// Read the script first to validate it
-	scriptBytes, err := io.ReadAll(reader)
-	if err != nil {
-		r.logger.LogErrorf("Script reading error: %v", err)
-		return fmt.Errorf("script reading error: %w", err)
-	}
-
-	script := string(scriptBytes)
-
-	// Now run the script
-	return r.RunScript(ctx, script)
 }

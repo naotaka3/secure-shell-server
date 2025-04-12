@@ -9,7 +9,10 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
-require mvdan.cc/sh/v3 v3.11.0
+require (
+	github.com/mark3labs/mcp-go v0.20.0
+	mvdan.cc/sh/v3 v3.11.0
+)
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -423,6 +426,7 @@ require (
 	github.com/yagipy/maintidx v1.0.0 // indirect
 	github.com/yeya24/promlinter v0.3.0 // indirect
 	github.com/ykadowak/zerologlint v0.1.5 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	gitlab.com/bosi/decorder v0.4.2 // indirect
 	gitlab.com/digitalxero/go-conventional-commit v1.0.7 // indirect
 	gitlab.com/gitlab-org/api/client-go v0.122.0 // indirect

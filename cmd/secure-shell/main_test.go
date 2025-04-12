@@ -30,18 +30,6 @@ func TestMainCommand(t *testing.T) {
 		wantOutput  string
 	}{
 		{
-			name:        "allowed command",
-			args:        []string{"-cmd", "echo hello"},
-			wantSuccess: true,
-			wantOutput:  "hello",
-		},
-		{
-			name:        "disallowed command",
-			args:        []string{"-cmd", "rm -rf /"},
-			wantSuccess: false,
-			wantOutput:  "Error: command \"rm\" is not permitted",
-		},
-		{
 			name:        "script with allowed commands",
 			args:        []string{"-script", "echo hello\nls"},
 			wantSuccess: true,
@@ -52,12 +40,6 @@ func TestMainCommand(t *testing.T) {
 			args:        []string{"-script", "echo hello\nrm -rf /"},
 			wantSuccess: false,
 			wantOutput:  "Error: script execution error",
-		},
-		{
-			name:        "custom allowed commands",
-			args:        []string{"-cmd", "grep test", "-allow", "ls,echo,cat,grep"},
-			wantSuccess: false, // grep with no input file will return exit status 1
-			wantOutput:  "command execution error",
 		},
 	}
 
