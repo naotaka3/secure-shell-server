@@ -21,7 +21,7 @@ import (
 
 // SafeRunner executes shell commands securely.
 type SafeRunner struct {
-	config    *config.ShellConfig
+	config    *config.ShellCommandConfig
 	validator *validator.CommandValidator
 	logger    *logger.Logger
 	stdout    io.Writer
@@ -29,7 +29,7 @@ type SafeRunner struct {
 }
 
 // New creates a new SafeRunner.
-func New(config *config.ShellConfig, validator *validator.CommandValidator, logger *logger.Logger) *SafeRunner {
+func New(config *config.ShellCommandConfig, validator *validator.CommandValidator, logger *logger.Logger) *SafeRunner {
 	return &SafeRunner{
 		config:    config,
 		validator: validator,
@@ -70,13 +70,14 @@ func (r *SafeRunner) Run(ctx context.Context, args []string) error {
 	command := exec.CommandContext(ctx, cmd, args[1:]...)
 
 	// Set environment variables
-	if len(r.config.RestrictedEnv) > 0 {
-		env := make([]string, 0, len(r.config.RestrictedEnv))
-		for k, v := range r.config.RestrictedEnv {
-			env = append(env, k+"="+v)
-		}
-		command.Env = env
+	restrictedEnv := map[string]string{
+		"PATH": "/usr/bin:/bin",
 	}
+	env := make([]string, 0, len(restrictedEnv))
+	for k, v := range restrictedEnv {
+		env = append(env, k+"="+v)
+	}
+	command.Env = env
 
 	// Set working directory if specified
 	if r.config.WorkingDir != "" {
@@ -102,7 +103,7 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 	// Validate script
 	valid, err := r.validator.ValidateScript(script)
 	if !valid || err != nil {
-		return fmt.Errorf("script validation failed: %w", err)
+		return fmt.Errorf("script execution error: %w", err)
 	}
 
 	// Parse the script
@@ -126,8 +127,11 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 	}
 
 	// Convert map to environment string pairs
-	envPairs := make([]string, 0, len(r.config.RestrictedEnv))
-	for k, v := range r.config.RestrictedEnv {
+	restrictedEnv := map[string]string{
+		"PATH": "/usr/bin:/bin",
+	}
+	envPairs := make([]string, 0, len(restrictedEnv))
+	for k, v := range restrictedEnv {
 		envPairs = append(envPairs, k+"="+v)
 	}
 
