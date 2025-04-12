@@ -75,56 +75,6 @@ func TestValidator_ValidateScript(t *testing.T) {
 	}
 }
 
-func TestValidator_ValidateScriptFile(t *testing.T) {
-	cfg := &config.ShellCommandConfig{
-		AllowedDirectories: []string{"/home", "/tmp"},
-		AllowCommands: []config.AllowCommand{
-			{Command: "ls"},
-			{Command: "echo"},
-			{Command: "cat"},
-		},
-		DenyCommands:        []config.DenyCommand{{Command: "rm", Message: "Remove command is not allowed"}},
-		DefaultErrorMessage: "Command not allowed by security policy",
-	}
-
-	log := logger.New()
-	validator := New(cfg, log)
-
-	tests := []struct {
-		name    string
-		script  string
-		wantOk  bool
-		wantErr bool
-	}{
-		{
-			name:    "allowed command",
-			script:  "ls -l",
-			wantOk:  true,
-			wantErr: false,
-		},
-		{
-			name:    "disallowed command",
-			script:  "rm -rf /",
-			wantOk:  false,
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reader := strings.NewReader(tt.script)
-			gotOk, err := validator.ValidateScriptFile(reader)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateScriptFile() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if gotOk != tt.wantOk {
-				t.Errorf("ValidateScriptFile() gotOk = %v, want %v", gotOk, tt.wantOk)
-			}
-		})
-	}
-}
-
 func TestValidator_ValidateScriptWithSubcommands(t *testing.T) {
 	cfg := &config.ShellCommandConfig{
 		AllowedDirectories: []string{"/home", "/tmp"},

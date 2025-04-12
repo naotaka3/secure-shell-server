@@ -2,7 +2,6 @@ package validator
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,50 +38,6 @@ func New(config *config.ShellCommandConfig, logger *logger.Logger) *CommandValid
 func (v *CommandValidator) ValidateScript(script string) (bool, error) {
 	parser := syntax.NewParser()
 	prog, err := parser.Parse(strings.NewReader(script), "")
-	if err != nil {
-		v.logger.LogErrorf("Parse error: %v", err)
-		return false, fmt.Errorf("parse error: %w", err)
-	}
-
-	valid := true
-	var validationErr error
-
-	syntax.Walk(prog, func(node syntax.Node) bool {
-		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-			// Extract the command name from the first argument
-			word := call.Args[0]
-			if len(word.Parts) > 0 {
-				if lit, ok := word.Parts[0].(*syntax.Lit); ok {
-					cmd := lit.Value
-					args := extractArgs(call.Args)
-
-					allowed, errMsg := v.validateCommand(cmd, args)
-					if !allowed {
-						validationErr = fmt.Errorf("%s", errMsg)
-						valid = false
-						v.logger.LogCommandAttempt(cmd, args, false)
-
-						// If a block log path is specified, log the blocked command
-						if v.config.BlockLogPath != "" {
-							v.logBlockedCommand(cmd, args, errMsg)
-						}
-
-						return false
-					}
-					v.logger.LogCommandAttempt(cmd, args, true)
-				}
-			}
-		}
-		return true
-	})
-
-	return valid, validationErr
-}
-
-// ValidateScriptFile validates a shell script file.
-func (v *CommandValidator) ValidateScriptFile(r io.Reader) (bool, error) {
-	parser := syntax.NewParser()
-	prog, err := parser.Parse(r, "")
 	if err != nil {
 		v.logger.LogErrorf("Parse error: %v", err)
 		return false, fmt.Errorf("parse error: %w", err)
