@@ -11,6 +11,7 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/runner"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
+	"github.com/shimizu1995/secure-shell-server/service"
 )
 
 func main() {
@@ -27,7 +28,8 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  help        Display this help message\n")
 		fmt.Fprintf(os.Stderr, "  version     Display version information\n")
-		fmt.Fprintf(os.Stderr, "  run         Run the secure shell command executor\n\n")
+		fmt.Fprintf(os.Stderr, "  run         Run the secure shell command executor\n")
+		fmt.Fprintf(os.Stderr, "  server      Start the MCP server\n\n")
 		fmt.Fprintf(os.Stderr, "For more information, use '%s [command] --help'\n", os.Args[0])
 	}
 
@@ -66,11 +68,70 @@ func run() int {
 		// Configure and run the secure shell
 		return runSecureShell(cmdToExec, scriptFile, scriptStr, allowedCommands, maxTime, workingDir)
 
+	case "server":
+		return runServer()
+
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
 		flag.Usage()
 		return 1
 	}
+}
+
+// runServer handles the server subcommand.
+func runServer() int {
+	// Use a different flag set to avoid conflicts with the run command
+	serverFlagSet := flag.NewFlagSet("server", flag.ExitOnError)
+
+	// Default port for HTTP server
+	const defaultPort = 8080
+
+	// Define server-specific flags
+	port := serverFlagSet.Int("port", defaultPort, "Port to listen on")
+	configFile := serverFlagSet.String("config", "", "Path to configuration file")
+	stdio := serverFlagSet.Bool("stdio", false, "Use stdin/stdout for MCP communication")
+
+	// Parse the server flags
+	if err := serverFlagSet.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		return 1
+	}
+
+	// Get configuration
+	var cfg *config.ShellCommandConfig
+	var err error
+
+	if *configFile != "" {
+		// Load configuration from file
+		cfg, err = config.LoadConfigFromFile(*configFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+			return 1
+		}
+	} else {
+		// Use default configuration
+		cfg = config.NewDefaultConfig()
+	}
+
+	// Create server
+	mcpServer := service.NewServer(cfg, *port)
+
+	// Start the server using stdio or HTTP
+	if *stdio {
+		fmt.Println("Starting MCP server using stdin/stdout...")
+		if err := mcpServer.ServeStdio(); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			return 1
+		}
+	} else {
+		fmt.Printf("Starting MCP server on port %d...\n", *port)
+		if err := mcpServer.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			return 1
+		}
+	}
+
+	return 0
 }
 
 func runSecureShell(cmdToExec, scriptFile, scriptStr, _ *string, maxTime *int, workingDir *string) int {
