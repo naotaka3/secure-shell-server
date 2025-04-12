@@ -10,6 +10,7 @@ tool (
 )
 
 require (
+	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/mark3labs/mcp-go v0.20.0
 	mvdan.cc/sh/v3 v3.11.0
 )
@@ -68,6 +69,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.1.4 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alecthomas/go-check-sumtype v0.3.1 // indirect
+	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/alexkohler/nakedret/v2 v2.0.5 // indirect
 	github.com/alexkohler/prealloc v1.0.0 // indirect
