@@ -34,20 +34,18 @@ func run() int {
 	log := logger.New()
 
 	// Create config with allowed commands
-	cfg := &config.ShellConfig{
-		AllowedCommands: make(map[string]bool),
-		RestrictedEnv: map[string]string{
-			"PATH": "/usr/bin:/bin",
-		},
-		WorkingDir:       *workingDir,
-		MaxExecutionTime: *maxTime,
-	}
+	cfg := config.NewDefaultConfig()
+	cfg.WorkingDir = *workingDir
+	cfg.MaxExecutionTime = *maxTime
+
+	// Clear the default allowed commands and add the ones from command line
+	cfg.AllowCommands = nil
 
 	// Parse and add allowed commands
 	for _, cmd := range strings.Split(*allowedCommands, ",") {
 		cmd = strings.TrimSpace(cmd)
 		if cmd != "" {
-			cfg.AddAllowedCommand(cmd)
+			cfg.AllowCommands = append(cfg.AllowCommands, config.AllowCommand{Command: cmd})
 		}
 	}
 
