@@ -21,6 +21,13 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Set up GOPATH
+        run: |
+          echo "GOPATH=$HOME/go" >> $GITHUB_ENV
+          echo "PATH=$GOPATH/bin:$PATH" >> $GITHUB_ENV
+          echo "GOMODCACHE=$HOME/pkg/mod" >> $GITHUB_ENV
+          echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
