@@ -144,26 +144,6 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 	return mcp.NewToolResultText(outputBuffer.String()), nil
 }
 
-// TestHandleRunCommand is a wrapper for handleRunCommand for testing.
-func (s *Server) TestHandleRunCommand(ctx context.Context, cmd string, dir string) (*mcp.CallToolResult, error) {
-	// Create a mock request with the necessary structure
-	request := mcp.CallToolRequest{}
-	// Set the arguments directly
-	request.Params.Arguments = map[string]interface{}{
-		"command":   cmd,
-		"directory": dir,
-	}
-
-	result, err := s.handleRunCommand(ctx, request)
-	// Convert err to a string for testing
-	if err != nil {
-		return nil, err
-	}
-
-	// For testing, convert the result to a simpler structure
-	return result, nil
-}
-
 // ServeStdio starts an MCP server using stdin/stdout for communication.
 func (s *Server) ServeStdio() error {
 	// Register the run_command tool
