@@ -9,7 +9,7 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
 
-func TestSafeRunner_RunScript(t *testing.T) {
+func TestSafeRunner_RunCommand(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	log := logger.New()
 	validatorObj := validator.New(cfg, log)
@@ -22,22 +22,22 @@ func TestSafeRunner_RunScript(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		script  string
+		command string
 		wantErr bool
 	}{
 		{
-			name:    "allowed script",
-			script:  "echo hello\nls -l",
+			name:    "allowed command",
+			command: "echo hello\nls -l",
 			wantErr: false,
 		},
 		{
-			name:    "disallowed script",
-			script:  "echo hello\nrm -rf /",
+			name:    "disallowed command",
+			command: "echo hello\nrm -rf /",
 			wantErr: true,
 		},
 		{
 			name:    "syntax error",
-			script:  "echo 'unclosed string",
+			command: "echo 'unclosed string",
 			wantErr: true,
 		},
 	}
@@ -49,9 +49,9 @@ func TestSafeRunner_RunScript(t *testing.T) {
 			stderr.Reset()
 
 			ctx := t.Context()
-			err := safeRunner.RunScript(ctx, tt.script)
+			err := safeRunner.RunCommand(ctx, tt.command)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("RunScript() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("RunCommand() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 		})

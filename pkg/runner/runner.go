@@ -45,17 +45,17 @@ func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
 	r.stderr = stderr
 }
 
-// RunScript runs a shell script.
-func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
-	// Validate script
-	valid, err := r.validator.ValidateScript(script)
+// RunCommand runs a shell command.
+func (r *SafeRunner) RunCommand(ctx context.Context, command string) error {
+	// Validate command
+	valid, err := r.validator.ValidateCommand(command)
 	if !valid || err != nil {
-		return fmt.Errorf("script execution error: %w", err)
+		return fmt.Errorf("command execution error: %w", err)
 	}
 
-	// Parse the script
+	// Parse the command
 	parser := syntax.NewParser()
-	prog, err := parser.Parse(strings.NewReader(script), "")
+	prog, err := parser.Parse(strings.NewReader(command), "")
 	if err != nil {
 		r.logger.LogErrorf("Parse error: %v", err)
 		return fmt.Errorf("parse error: %w", err)
@@ -82,7 +82,7 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 		envPairs = append(envPairs, k+"="+v)
 	}
 
-	// Run the script with proper options
+	// Run the command with proper options
 	runner, err := interp.New(
 		interp.ExecHandlers(func(_ interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 			return execHandler
@@ -90,7 +90,7 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(expand.ListEnviron(envPairs...)),
 	)
-	// Run the script
+	// Run the command
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)
 		return fmt.Errorf("interpreter creation error: %w", err)
@@ -98,8 +98,8 @@ func (r *SafeRunner) RunScript(ctx context.Context, script string) error {
 
 	err = runner.Run(ctx, prog)
 	if err != nil {
-		r.logger.LogErrorf("Script execution error: %v", err)
-		return fmt.Errorf("script execution error: %w", err)
+		r.logger.LogErrorf("Command execution error: %v", err)
+		return fmt.Errorf("command execution error: %w", err)
 	}
 
 	return nil

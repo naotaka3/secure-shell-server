@@ -8,7 +8,7 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 )
 
-func TestValidator_ValidateScript(t *testing.T) {
+func TestValidator_ValidateCommand(t *testing.T) {
 	cfg := &config.ShellCommandConfig{
 		AllowedDirectories: []string{"/home", "/tmp"},
 		AllowCommands: []config.AllowCommand{
@@ -25,37 +25,37 @@ func TestValidator_ValidateScript(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		script  string
+		command string
 		wantOk  bool
 		wantErr bool
 	}{
 		{
 			name:    "allowed command",
-			script:  "ls -l",
+			command: "ls -l",
 			wantOk:  true,
 			wantErr: false,
 		},
 		{
 			name:    "disallowed command",
-			script:  "rm -rf /",
+			command: "rm -rf /",
 			wantOk:  false,
 			wantErr: true,
 		},
 		{
 			name:    "multiple allowed commands",
-			script:  "ls -l; echo hello",
+			command: "ls -l; echo hello",
 			wantOk:  true,
 			wantErr: false,
 		},
 		{
 			name:    "mixed allowed/disallowed commands",
-			script:  "ls -l; rm -rf /",
+			command: "ls -l; rm -rf /",
 			wantOk:  false,
 			wantErr: true,
 		},
 		{
 			name:    "syntax error",
-			script:  "ls -l; echo 'unclosed string",
+			command: "ls -l; echo 'unclosed string",
 			wantOk:  false,
 			wantErr: true,
 		},
@@ -63,19 +63,19 @@ func TestValidator_ValidateScript(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotOk, err := validator.ValidateScript(tt.script)
+			gotOk, err := validator.ValidateCommand(tt.command)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateScript() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateCommand() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotOk != tt.wantOk {
-				t.Errorf("ValidateScript() gotOk = %v, want %v", gotOk, tt.wantOk)
+				t.Errorf("ValidateCommand() gotOk = %v, want %v", gotOk, tt.wantOk)
 			}
 		})
 	}
 }
 
-func TestValidator_ValidateScriptWithSubcommands(t *testing.T) {
+func TestValidator_ValidateCommandWithSubcommands(t *testing.T) {
 	cfg := &config.ShellCommandConfig{
 		AllowedDirectories: []string{"/home", "/tmp"},
 		AllowCommands: []config.AllowCommand{
@@ -95,56 +95,56 @@ func TestValidator_ValidateScriptWithSubcommands(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		script      string
+		command     string
 		wantOk      bool
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name:        "allowed simple command",
-			script:      "ls -l",
+			command:     "ls -l",
 			wantOk:      true,
 			wantErr:     false,
 			errContains: "",
 		},
 		{
 			name:        "allowed command with allowed subcommand",
-			script:      "git status",
+			command:     "git status",
 			wantOk:      true,
 			wantErr:     false,
 			errContains: "",
 		},
 		{
 			name:        "allowed command with disallowed subcommand",
-			script:      "git push",
+			command:     "git push",
 			wantOk:      false,
 			wantErr:     true,
 			errContains: "subcommand \"push\" is not allowed",
 		},
 		{
 			name:        "allowed command with denied subcommand",
-			script:      "cp -r /src /dest",
+			command:     "cp -r /src /dest",
 			wantOk:      false,
 			wantErr:     true,
 			errContains: "subcommand \"-r\" is denied",
 		},
 		{
 			name:        "explicitly denied command with message",
-			script:      "rm -rf /",
+			command:     "rm -rf /",
 			wantOk:      false,
 			wantErr:     true,
 			errContains: "Remove command is not allowed",
 		},
 		{
 			name:        "explicitly denied command without message",
-			script:      "mv /src /dest",
+			command:     "mv /src /dest",
 			wantOk:      false,
 			wantErr:     true,
 			errContains: "Command not allowed by security policy",
 		},
 		{
 			name:        "command not in allow list",
-			script:      "wget http://example.com",
+			command:     "wget http://example.com",
 			wantOk:      false,
 			wantErr:     true,
 			errContains: "Command not allowed by security policy",
@@ -153,17 +153,17 @@ func TestValidator_ValidateScriptWithSubcommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotOk, err := validator.ValidateScript(tt.script)
+			gotOk, err := validator.ValidateCommand(tt.command)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateScript() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateCommand() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotOk != tt.wantOk {
-				t.Errorf("ValidateScript() gotOk = %v, want %v", gotOk, tt.wantOk)
+				t.Errorf("ValidateCommand() gotOk = %v, want %v", gotOk, tt.wantOk)
 			}
 			if tt.errContains != "" && err != nil {
 				if !strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf("ValidateScript() error = %v, should contain %v", err, tt.errContains)
+					t.Errorf("ValidateCommand() error = %v, should contain %v", err, tt.errContains)
 				}
 			}
 		})

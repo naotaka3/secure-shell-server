@@ -151,7 +151,7 @@ func runSecureShell(scriptStr, _ *string, maxTime *int, workingDir *string) int 
 	switch {
 	case *scriptStr != "":
 		// Execute a script string
-		err = safeRunner.RunScript(context.Background(), *scriptStr)
+		err = safeRunner.RunCommand(context.Background(), *scriptStr)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: No command or script specified\n")

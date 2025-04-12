@@ -34,10 +34,10 @@ func New(config *config.ShellCommandConfig, logger *logger.Logger) *CommandValid
 	}
 }
 
-// ValidateScript validates a shell script string.
-func (v *CommandValidator) ValidateScript(script string) (bool, error) {
+// ValidateCommand validates a shell command string.
+func (v *CommandValidator) ValidateCommand(command string) (bool, error) {
 	parser := syntax.NewParser()
-	prog, err := parser.Parse(strings.NewReader(script), "")
+	prog, err := parser.Parse(strings.NewReader(command), "")
 	if err != nil {
 		v.logger.LogErrorf("Parse error: %v", err)
 		return false, fmt.Errorf("parse error: %w", err)

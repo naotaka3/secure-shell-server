@@ -39,7 +39,7 @@ func TestMainCommand(t *testing.T) {
 			name:        "script with disallowed commands",
 			args:        []string{"-script", "echo hello\nrm -rf /"},
 			wantSuccess: false,
-			wantOutput:  "Error: script execution error",
+			wantOutput:  "Error: command execution error",
 		},
 	}
 

@@ -28,7 +28,7 @@ func main() {
 	// Execute a script
 	script := "echo 'Hello, World!'; ls -l"
 	fmt.Printf("\nExecuting script: %s\n", script)
-	err := safeRunner.RunScript(context.Background(), script)
+	err := safeRunner.RunCommand(context.Background(), script)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -37,7 +37,7 @@ func main() {
 	// Try to execute a disallowed command
 	disallowedScript := "rm -rf /tmp/test"
 	fmt.Printf("\nAttempting to execute disallowed script: %s\n", disallowedScript)
-	err = safeRunner.RunScript(context.Background(), disallowedScript)
+	err = safeRunner.RunCommand(context.Background(), disallowedScript)
 	if err != nil {
 		fmt.Printf("Expected error: %v\n", err)
 	} else {

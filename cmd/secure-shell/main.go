@@ -65,7 +65,7 @@ func run() int {
 	switch {
 	case *scriptStr != "":
 		// Execute a script string
-		err = safeRunner.RunScript(ctx, *scriptStr)
+		err = safeRunner.RunCommand(ctx, *scriptStr)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: No command or script specified\n")
