@@ -136,7 +136,8 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 	err := s.runner.RunCommand(ctx, commandStr, directory)
 	if err != nil {
 		s.logger.LogErrorf("Command execution failed: %v", err)
-		return mcp.NewToolResultError(outputBuffer.String()), nil
+		output := fmt.Sprintf("Error: %v\n%s", err, outputBuffer.String())
+		return mcp.NewToolResultError(output), nil
 	}
 
 	// Return the command output
