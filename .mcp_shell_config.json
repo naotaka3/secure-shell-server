@@ -1,0 +1,59 @@
+{
+  "allowedDirectories": [
+    "/Users/yu.shimizu/work",
+    "/Users/yu.shimizu/go/src/github.com"
+  ],
+  "allowCommands": [
+    {
+      "command": "ls"
+    },
+    {
+      "command": "cat"
+    },
+    {
+      "command": "grep"
+    },
+    {
+      "command": "npm",
+      "subCommands": ["run", "test"]
+    },
+    {
+      "command": "bun",
+      "subCommands": ["run", "test"]
+    },
+    {
+      "command": "uv",
+      "subCommands": ["run"]
+    },
+    {
+      "command": "go",
+      "subCommands": ["test", "run", "build", "mod", "get", "version"]
+    },
+    {
+      "command": "make",
+      "subCommands": [
+        "build",
+        "clean",
+        "mod",
+        "gen",
+        "test",
+        "spell",
+        "lint",
+        "vuln",
+        "diff"
+      ]
+    }
+  ],
+  "denyCommands": [
+    {
+      "command": "cd",
+      "message": "specify directory in arguments instead of using cd"
+    },
+    {
+      "command": "rm",
+      "message": "Run `git rm` instead of rm"
+    }
+  ],
+  "defaultErrorMessage": "this command is not allowed",
+  "blockLogPath": "/tmp/mcp-secure-shell/block.log"
+}
