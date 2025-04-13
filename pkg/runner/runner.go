@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -45,8 +46,15 @@ func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
 
 // RunCommand runs a shell command in the specified working directory.
 func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) error {
+	// Get absolute path of the working directory
+	absWorkingDir, err := filepath.Abs(workingDir)
+	if err != nil {
+		r.logger.LogErrorf("Failed to get absolute path for working directory: %v", err)
+		return fmt.Errorf("failed to get absolute path for working directory: %w", err)
+	}
+
 	// Validate that the working directory is allowed
-	dirAllowed, dirMessage := r.validator.IsDirectoryAllowed(workingDir)
+	dirAllowed, dirMessage := r.validator.IsDirectoryAllowed(absWorkingDir)
 	if !dirAllowed {
 		r.logger.LogErrorf("Directory validation failed: %s", dirMessage)
 		return fmt.Errorf("directory validation failed: %s", dirMessage)
@@ -94,7 +102,7 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(expand.ListEnviron(envPairs...)),
-		interp.Dir(workingDir),
+		interp.Dir(absWorkingDir),
 	)
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)
