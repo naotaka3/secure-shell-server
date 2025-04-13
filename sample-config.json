@@ -1,9 +1,5 @@
 {
-  "allowedDirectories": [
-    "/home",
-    "/tmp",
-    "/var/log"
-  ],
+  "allowedDirectories": ["/home", "/tmp", "/var/log"],
   "allowCommands": [
     "ls",
     "cat",
