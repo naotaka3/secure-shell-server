@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 
@@ -75,15 +74,6 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		ctx = timeoutCtx
 	}
 
-	// Create restricted environment
-	restrictedEnv := map[string]string{
-		"PATH": "/usr/bin:/bin",
-	}
-	envPairs := make([]string, 0, len(restrictedEnv))
-	for k, v := range restrictedEnv {
-		envPairs = append(envPairs, k+"="+v)
-	}
-
 	callFunc := func(_ context.Context, args []string) ([]string, error) {
 		cmd := args[0]
 		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:])
@@ -101,7 +91,7 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	runner, err := interp.New(
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
-		interp.Env(expand.ListEnviron(envPairs...)),
+		interp.Env(nil),
 		interp.Dir(absWorkingDir),
 	)
 	if err != nil {
