@@ -1,0 +1,44 @@
+{
+  "allowedDirectories": [
+    "/home",
+    "/tmp",
+    "/var/log"
+  ],
+  "allowCommands": [
+    "ls",
+    "cat",
+    "echo",
+    "grep",
+    {
+      "command": "git",
+      "subCommands": ["status", "pull", "fetch", "log", "diff"],
+      "denySubCommands": ["push", "commit"]
+    },
+    {
+      "command": "docker",
+      "subCommands": ["ps", "logs", "info", "inspect"]
+    },
+    "find",
+    "head",
+    "tail"
+  ],
+  "denyCommands": [
+    "rm",
+    "mv",
+    {
+      "command": "sudo",
+      "message": "Elevated privileges are not allowed"
+    },
+    {
+      "command": "ssh",
+      "message": "Remote connections are disabled for security reasons"
+    },
+    "vi",
+    "nano",
+    "wget",
+    "curl"
+  ],
+  "defaultErrorMessage": "This command is not allowed by security policy. Please contact your administrator if you need access.",
+  "blockLogPath": "/var/log/secure-shell/blocked-commands.log",
+  "maxExecutionTime": 60
+}
