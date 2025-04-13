@@ -129,10 +129,5 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	}
 
 	err = runner.Run(ctx, prog)
-	// if err != nil {
-	// 	r.logger.LogInfof("Command execution failed: %v", err)
-	// 	return nil // Return nil because the given command is allowed
-	// }
-
 	return err
 }
