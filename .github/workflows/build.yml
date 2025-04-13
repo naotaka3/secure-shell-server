@@ -36,24 +36,25 @@ jobs:
 
       - name: Build
         run: make ci
-      - name: Upload coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-${{ matrix.os }}
-          path: coverage.*
 
-      - run: go tool goreleaser release --clean --snapshot
-        if: ${{ runner.os == 'Linux' }}
+      # - name: Upload coverage
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     name: coverage-${{ matrix.os }}
+      #     path: coverage.*
 
-      - name: Upload dist
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: dist-${{ matrix.os }}
-          path: dist
+      # - run: go tool goreleaser release --clean --snapshot
+      #   if: ${{ runner.os == 'Linux' }}
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0565863a31f2c772f9f0395002a31e3f06189574 # v5.4.0
-        with:
-          fail_ci_if_error: true
-          files: ./coverage.out
-          token: ${{ secrets.CODECOV_TOKEN }}
+      # - name: Upload dist
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     name: dist-${{ matrix.os }}
+      #     path: dist
+
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@0565863a31f2c772f9f0395002a31e3f06189574 # v5.4.0
+      #   with:
+      #     fail_ci_if_error: true
+      #     files: ./coverage.out
+      #     token: ${{ secrets.CODECOV_TOKEN }}

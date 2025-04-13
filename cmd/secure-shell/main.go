@@ -33,7 +33,6 @@ func run() int {
 
 	// Create config with allowed commands
 	cfg := config.NewDefaultConfig()
-	cfg.WorkingDir = *workingDir
 	cfg.MaxExecutionTime = *maxTime
 
 	// Clear the default allowed commands and add the ones from command line
@@ -65,7 +64,7 @@ func run() int {
 	switch {
 	case *scriptStr != "":
 		// Execute a script string
-		err = safeRunner.RunCommand(ctx, *scriptStr)
+		err = safeRunner.RunCommand(ctx, *scriptStr, *workingDir)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: No command or script specified\n")

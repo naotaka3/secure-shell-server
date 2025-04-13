@@ -8,47 +8,62 @@ A Go-based tool for secure execution of shell commands using the `mvdan.cc/sh/v3
 - **Secure Execution**: Uses a custom runner to enforce the allowlist during command execution.
 - **Environment Restrictions**: Limits access to the file system, environment variables, and system resources.
 - **Detailed Logging**: Logs all command attempts and execution results for auditing and debugging.
+- **MCP Server Mode**: Provides a service interface for secure command execution.
 
 ## Installation
 
 ```bash
 go get github.com/shimizu1995/secure-shell-server
+cd $GOPATH/src/github.com/shimizu1995/secure-shell-server
+make build
 ```
+
+The binaries will be available in the `bin/` directory.
 
 ## Usage
 
 ### Running a Command
 
 ```bash
-secure-shell-server run -cmd="ls -l"
+./bin/secure-shell -script="ls -l"
 ```
 
 ### Running a Script
 
 ```bash
-secure-shell-server run -script="echo 'Hello, World!'; ls -l"
-```
-
-### Reading a Script from a File
-
-```bash
-secure-shell-server run -file="/path/to/script.sh"
+./bin/secure-shell -script="echo 'Hello, World!'; ls -l"
 ```
 
 ### Custom Configuration
 
 ```bash
-secure-shell-server run -cmd="grep pattern file.txt" -allow="ls,echo,cat,grep" -timeout=60 -dir="/safe/directory"
+./bin/secure-shell -script="grep pattern file.txt" -allow="ls,echo,cat,grep" -timeout=60 -dir="/safe/directory"
 ```
 
-### Command-Line Options
+### Starting the MCP Server
 
-- `-cmd`: Command to execute
+```bash
+./bin/server -port=8080
+```
+
+or using standard input/output for MCP communication:
+
+```bash
+./bin/server -stdio
+```
+
+### Command-Line Options for secure-shell
+
 - `-script`: Script string to execute
-- `-file`: Script file to execute
 - `-allow`: Comma-separated list of allowed commands (default: "ls,echo,cat")
 - `-timeout`: Maximum execution time in seconds (default: 30)
 - `-dir`: Working directory for command execution
+
+### Command-Line Options for server
+
+- `-port`: Port to listen on (default: 8080)
+- `-config`: Path to configuration file
+- `-stdio`: Use stdin/stdout for MCP communication
 
 ## Design and Implementation
 
@@ -58,6 +73,7 @@ The Secure Shell Server follows a modular design with the following components:
 2. **Runner**: Executes validated commands using a secure custom runner.
 3. **Config**: Manages allowlist configuration and runtime settings.
 4. **Logger**: Provides detailed logging of all command attempts and results.
+5. **Server**: MCP interface for secure shell execution service.
 
 ## Security Considerations
 
@@ -70,7 +86,7 @@ The Secure Shell Server follows a modular design with the following components:
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.20 or later
 - `mvdan.cc/sh/v3` package
 
 ### Building

@@ -29,8 +29,6 @@ type ShellCommandConfig struct {
 	DenyCommands        []DenyCommand  `json:"denyCommands"`
 	DefaultErrorMessage string         `json:"defaultErrorMessage"`
 	BlockLogPath        string         `json:"blockLogPath,omitempty"`
-	// WorkingDir is the working directory for command execution
-	WorkingDir string `json:"workingDir,omitempty"`
 	// MaxExecutionTime is the maximum execution time in seconds
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
 }
@@ -46,7 +44,6 @@ func NewDefaultConfig() *ShellCommandConfig {
 		},
 		DenyCommands:        []DenyCommand{{Command: "rm", Message: "Remove command is not allowed"}},
 		DefaultErrorMessage: "Command not allowed by security policy",
-		WorkingDir:          "",
 		MaxExecutionTime:    DefaultExecutionTimeout,
 	}
 }

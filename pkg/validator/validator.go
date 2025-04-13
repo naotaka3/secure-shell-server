@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"mvdan.cc/sh/v3/syntax"
-
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 )
@@ -34,55 +32,11 @@ func New(config *config.ShellCommandConfig, logger *logger.Logger) *CommandValid
 	}
 }
 
-// ValidateCommand validates a shell command string.
-func (v *CommandValidator) ValidateCommand(command string) (bool, error) {
-	parser := syntax.NewParser()
-	prog, err := parser.Parse(strings.NewReader(command), "")
-	if err != nil {
-		v.logger.LogErrorf("Parse error: %v", err)
-		return false, fmt.Errorf("parse error: %w", err)
-	}
-
-	valid := true
-	var validationErr error
-
-	syntax.Walk(prog, func(node syntax.Node) bool {
-		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-			// Extract the command name from the first argument
-			word := call.Args[0]
-			if len(word.Parts) > 0 {
-				if lit, ok := word.Parts[0].(*syntax.Lit); ok {
-					cmd := lit.Value
-					args := extractArgs(call.Args)
-
-					allowed, errMsg := v.validateCommand(cmd, args)
-					if !allowed {
-						validationErr = fmt.Errorf("%s", errMsg)
-						valid = false
-						v.logger.LogCommandAttempt(cmd, args, false)
-
-						// If a block log path is specified, log the blocked command
-						if v.config.BlockLogPath != "" {
-							v.logBlockedCommand(cmd, args, errMsg)
-						}
-
-						return false
-					}
-					v.logger.LogCommandAttempt(cmd, args, true)
-				}
-			}
-		}
-		return true
-	})
-
-	return valid, validationErr
-}
-
 // IsDirectoryAllowed checks if a given directory is allowed to run commands in.
 func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
-	// If the directory is empty, use the working directory from the config
+	// If the directory is empty, it cannot be validated
 	if dir == "" {
-		dir = v.config.WorkingDir
+		return false, "empty directory path is not allowed"
 	}
 
 	// Check if the directory is in the allowed directories list or is a subdirectory of an allowed directory
@@ -95,10 +49,11 @@ func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
 	return false, fmt.Sprintf("directory %q is not allowed: %s", dir, v.config.DefaultErrorMessage)
 }
 
-// validateCommand checks if a command is allowed based on the configuration.
-func (v *CommandValidator) validateCommand(cmd string, args []string) (bool, string) {
+// ValidateCommand checks if a command is allowed based on the configuration.
+func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, string) {
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
 		return false, message
 	}
 
@@ -120,7 +75,9 @@ func (v *CommandValidator) validateCommand(cmd string, args []string) (bool, str
 	}
 
 	// If command was not found in the allow list, it's denied
-	return false, fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+	deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+	v.logBlockedCommand(cmd, args, deniedMessage)
+	return false, deniedMessage
 }
 
 // isCommandExplicitlyDenied checks if a command is explicitly denied in the configuration.
@@ -150,7 +107,9 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 		}
 
 		if !subCommandAllowed {
-			return false, fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
+			deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
+			v.logBlockedCommand(cmd, args, deniedMessage)
+			return false, deniedMessage
 		}
 	}
 
@@ -158,7 +117,9 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 	if len(allowed.DenySubCommands) > 0 && len(args) > 0 {
 		for _, deniedSubCmd := range allowed.DenySubCommands {
 			if args[0] == deniedSubCmd {
-				return false, fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
+				deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
+				v.logBlockedCommand(cmd, args, deniedMessage)
+				return false, deniedMessage
 			}
 		}
 	}
@@ -195,23 +156,4 @@ func (v *CommandValidator) logBlockedCommand(cmd string, args []string, reason s
 	if _, err := f.WriteString(logEntry); err != nil {
 		v.logger.LogErrorf("Failed to write to block log file: %v", err)
 	}
-}
-
-// extractArgs extracts command arguments as strings.
-func extractArgs(args []*syntax.Word) []string {
-	if len(args) <= 1 {
-		return []string{}
-	}
-
-	result := make([]string, 0, len(args)-1)
-	for i := 1; i < len(args); i++ {
-		word := args[i]
-		if len(word.Parts) > 0 {
-			if lit, ok := word.Parts[0].(*syntax.Lit); ok {
-				result = append(result, lit.Value)
-			}
-		}
-	}
-
-	return result
 }
