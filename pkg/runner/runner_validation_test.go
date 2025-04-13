@@ -61,7 +61,7 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "rm -rf /tmp/test")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "command execution error: command \"rm\" is denied: Remove command is not allowed")
+		assert.Contains(t, err.Error(), "command \"rm\" is denied: Remove command is not allowed")
 	})
 
 	// 許可リストにないコマンド
@@ -69,7 +69,7 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "chmod 777 file.txt")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "command execution error: command \"chmod\" is not permitted: Command not allowed by security policy")
+		assert.Contains(t, err.Error(), "command \"chmod\" is not permitted: Command not allowed by security policy")
 	})
 
 	// 許可されたサブコマンドを持つコマンド
@@ -84,7 +84,7 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "git push")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "command execution error: subcommand \"push\" is not allowed for command \"git\"")
+		assert.Contains(t, err.Error(), "subcommand \"push\" is not allowed for command \"git\"")
 	})
 
 	// 許可リストにないサブコマンドを持つコマンド
@@ -92,7 +92,7 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "git clone https://github.com/example/repo.git")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "command execution error: subcommand \"clone\" is not allowed for command \"git\"")
+		assert.Contains(t, err.Error(), "subcommand \"clone\" is not allowed for command \"git\"")
 	})
 
 	// コマンドの構文エラー
@@ -100,7 +100,7 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "echo 'unclosed string")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "command execution error: parse error: ")
+		assert.Contains(t, err.Error(), "parse error: ")
 	})
 
 	// リダイレクションを持つコマンド

@@ -71,9 +71,10 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string) error {
 
 	callFunc := func(_ context.Context, args []string) ([]string, error) {
 		cmd := args[0]
-		if !r.config.IsCommandAllowed(cmd) {
+		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:])
+		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
-			return args, fmt.Errorf("command %q is not permitted", cmd)
+			return args, fmt.Errorf("%s", errMsg)
 		}
 
 		r.logger.LogCommandAttempt(cmd, args[1:], true)

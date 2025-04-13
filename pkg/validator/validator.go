@@ -49,10 +49,11 @@ func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
 	return false, fmt.Sprintf("directory %q is not allowed: %s", dir, v.config.DefaultErrorMessage)
 }
 
-// validateCommand checks if a command is allowed based on the configuration.
+// ValidateCommand checks if a command is allowed based on the configuration.
 func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, string) {
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
 		return false, message
 	}
 
@@ -74,7 +75,9 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, str
 	}
 
 	// If command was not found in the allow list, it's denied
-	return false, fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+	deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+	v.logBlockedCommand(cmd, args, deniedMessage)
+	return false, deniedMessage
 }
 
 // isCommandExplicitlyDenied checks if a command is explicitly denied in the configuration.
@@ -104,7 +107,9 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 		}
 
 		if !subCommandAllowed {
-			return false, fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
+			deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
+			v.logBlockedCommand(cmd, args, deniedMessage)
+			return false, deniedMessage
 		}
 	}
 
@@ -112,7 +117,9 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 	if len(allowed.DenySubCommands) > 0 && len(args) > 0 {
 		for _, deniedSubCmd := range allowed.DenySubCommands {
 			if args[0] == deniedSubCmd {
-				return false, fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
+				deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
+				v.logBlockedCommand(cmd, args, deniedMessage)
+				return false, deniedMessage
 			}
 		}
 	}
