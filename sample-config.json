@@ -1,0 +1,38 @@
+{
+  "allowedDirectories": ["/home", "/tmp", "/var/log"],
+  "allowCommands": [
+    "ls",
+    "cat",
+    "echo",
+    "grep",
+    "find",
+    "head",
+    "tail",
+    {
+      "command": "git",
+      "subCommands": ["status", "pull", "fetch", "log", "diff"],
+      "denySubCommands": ["push", "commit"]
+    },
+    {
+      "command": "docker",
+      "subCommands": ["ps", "logs", "info", "inspect"]
+    }
+  ],
+  "denyCommands": [
+    {
+      "command": "rm",
+      "message": "Run `git rm` instead of rm"
+    },
+    {
+      "command": "cd",
+      "message": "Specify directory in arguments instead of using cd"
+    },
+    {
+      "command": "sudo",
+      "message": "Elevated privileges are not allowed"
+    }
+  ],
+  "defaultErrorMessage": "This command is not allowed.",
+  "blockLogPath": "/var/log/secure-shell/blocked-commands.log",
+  "maxExecutionTime": 60
+}
