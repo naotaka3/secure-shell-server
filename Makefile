@@ -22,9 +22,13 @@ help:
 
 .PHONY: clean
 clean: ## remove files created during build pipeline
-	rm -rf dist
+	rm -rf dist bin
 	rm -f coverage.*
 	rm -f '"$(shell go env GOCACHE)/../golangci-lint"'
+
+.PHONY: clean-all
+clean-all: ## remove all files created during build pipeline
+	make clean
 	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go clean -i -cache -testcache -modcache -fuzzcache -x
 
 .PHONY: mod
@@ -37,7 +41,8 @@ gen: ## go generate
 
 .PHONY: build
 build: ## go build
-	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go build -o ./cmd/secure-shell/secure-shell ./cmd/secure-shell/main.go
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go build -o ./bin/secure-shell ./cmd/secure-shell/main.go
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go build -o ./bin/server ./cmd/server/main.go
 
 .PHONY: spell
 spell: ## misspell

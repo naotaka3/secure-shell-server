@@ -39,4 +39,4 @@ dist/
 .env
 .envrc
 
-cmd/secure-shell/secure-shell
+/bin
