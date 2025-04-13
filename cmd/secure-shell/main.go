@@ -25,11 +25,19 @@ func run() int {
 	allowedCommands := flag.String("allow", "ls,echo,cat", "Comma-separated list of allowed commands")
 	maxTime := flag.Int("timeout", config.DefaultExecutionTimeout, "Maximum execution time in seconds")
 	workingDir := flag.String("dir", "", "Working directory for command execution")
+	logPath := flag.String("log", "", "Path to the log file (if empty, no logging occurs)")
 
 	flag.Parse()
 
-	// Create logger
-	log := logger.New()
+	// Create logger with optional path
+	var log *logger.Logger
+
+	log, logErr := logger.NewWithPath(*logPath)
+	if logErr != nil {
+		fmt.Fprintf(os.Stderr, "Error creating logger: %v\n", logErr)
+		return 1
+	}
+	defer log.Close()
 
 	// Create config with allowed commands
 	cfg := config.NewDefaultConfig()
