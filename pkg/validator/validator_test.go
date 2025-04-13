@@ -18,13 +18,17 @@ func TestValidateCommand(t *testing.T) {
 		AllowedDirectories: []string{"/home", "/tmp"},
 		AllowCommands: []config.AllowCommand{
 			{Command: "ls"}, // Command with no subcommand restrictions
-			{Command: "git", SubCommands: []string{"pull", "push", "status"}},                                // Command with allowed subcommands
+			{Command: "cat"},
+			{Command: "echo"},
+			{Command: "grep"},
+			{Command: "find"},
+			{Command: "git", SubCommands: []string{"status", "log", "diff"}, DenySubCommands: []string{"push", "commit"}},
 			{Command: "docker", DenySubCommands: []string{"rm", "exec", "run"}},                              // Command with denied subcommands
 			{Command: "npm", SubCommands: []string{"install", "update"}, DenySubCommands: []string{"audit"}}, // Command with both allowed and denied subcommands
 		},
 		DenyCommands: []config.DenyCommand{
 			{Command: "rm", Message: "Remove command is not allowed"},
-			{Command: "sudo"}, // With default error message
+			{Command: "sudo", Message: "Sudo is not allowed for security reasons"}, // With custom error message
 		},
 		DefaultErrorMessage: "Command not allowed by security policy",
 		BlockLogPath:        "", // Don't write to a log file in tests
@@ -45,17 +49,28 @@ func TestValidateCommand(t *testing.T) {
 		allowed bool
 		message string
 	}{
-		// Test allowed commands
-		{name: "AllowedCommand", cmd: "ls", args: []string{"-la"}, allowed: true, message: ""},
+		// Test additional allowed commands
+		{name: "LsCommand", cmd: "ls", args: []string{"-la"}, allowed: true, message: ""},
+		{name: "EchoCommand", cmd: "echo", args: []string{"hello"}, allowed: true, message: ""},
+		{name: "CatCommand", cmd: "cat", args: []string{"/tmp/file.txt"}, allowed: true, message: ""},
+		{name: "GrepCommand", cmd: "grep", args: []string{"pattern", "file.txt"}, allowed: true, message: ""},
+		{name: "FindCommand", cmd: "find", args: []string{".", "-name", "*.txt"}, allowed: true, message: ""},
 
 		// Test denied commands
 		{name: "ExplicitlyDeniedCommand", cmd: "rm", args: []string{"-rf", "/tmp"}, allowed: false, message: "command \"rm\" is denied: Remove command is not allowed"},
-		{name: "DeniedCommandWithDefaultMessage", cmd: "sudo", args: []string{"apt-get", "update"}, allowed: false, message: "command \"sudo\" is denied: Command not allowed by security policy"},
+		{name: "DeniedCommandWithCustomMessage", cmd: "sudo", args: []string{"apt-get", "update"}, allowed: false, message: "command \"sudo\" is denied: Sudo is not allowed for security reasons"},
 		{name: "UnlistedCommand", cmd: "wget", args: []string{"https://example.com"}, allowed: false, message: "command \"wget\" is not permitted: Command not allowed by security policy"},
+		{name: "ChmodNotInAllowList", cmd: "chmod", args: []string{"777", "file.txt"}, allowed: false, message: "command \"chmod\" is not permitted: Command not allowed by security policy"},
 
-		// Test subcommand handling
-		{name: "AllowedSubcommand", cmd: "git", args: []string{"pull"}, allowed: true, message: ""},
-		{name: "DisallowedSubcommand", cmd: "git", args: []string{"fetch"}, allowed: false, message: "subcommand \"fetch\" is not allowed for command \"git\""},
+		// Test git-specific subcommands
+		{name: "GitStatusAllowed", cmd: "git", args: []string{"status"}, allowed: true, message: ""},
+		{name: "GitLogAllowed", cmd: "git", args: []string{"log"}, allowed: true, message: ""},
+		{name: "GitDiffAllowed", cmd: "git", args: []string{"diff"}, allowed: true, message: ""},
+		{name: "GitPushDenied", cmd: "git", args: []string{"push"}, allowed: false, message: "subcommand \"push\" is not allowed for command \"git\""},
+		{name: "GitCommitDenied", cmd: "git", args: []string{"commit"}, allowed: false, message: "subcommand \"commit\" is not allowed for command \"git\""},
+		{name: "GitCloneNotAllowed", cmd: "git", args: []string{"clone", "https://github.com/example/repo.git"}, allowed: false, message: "subcommand \"clone\" is not allowed for command \"git\""},
+
+		// Test docker subcommand handling
 		{name: "DeniedSubcommand", cmd: "docker", args: []string{"rm"}, allowed: false, message: "subcommand \"rm\" is denied for command \"docker\""},
 		{name: "AllowedDockerSubcommand", cmd: "docker", args: []string{"ps"}, allowed: true, message: ""},
 

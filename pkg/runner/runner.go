@@ -43,8 +43,15 @@ func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
 	r.stderr = stderr
 }
 
-// RunCommand runs a shell command.
-func (r *SafeRunner) RunCommand(ctx context.Context, command string) error {
+// RunCommand runs a shell command in the specified working directory.
+func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) error {
+	// Validate that the working directory is allowed
+	dirAllowed, dirMessage := r.validator.IsDirectoryAllowed(workingDir)
+	if !dirAllowed {
+		r.logger.LogErrorf("Directory validation failed: %s", dirMessage)
+		return fmt.Errorf("directory validation failed: %s", dirMessage)
+	}
+
 	// Parse the command
 	parser := syntax.NewParser()
 	prog, err := parser.Parse(strings.NewReader(command), "")
@@ -90,8 +97,8 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string) error {
 	)
 
 	// Set working directory if specified
-	if r.config.WorkingDir != "" {
-		dir := interp.Dir(r.config.WorkingDir)
+	if workingDir != "" {
+		dir := interp.Dir(workingDir)
 		err = dir(runner)
 		if err != nil {
 			r.logger.LogErrorf("Failed to set working directory: %v", err)

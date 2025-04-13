@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -24,6 +25,8 @@ type Server struct {
 	logger    *logger.Logger
 	mcpServer *server.MCPServer
 	port      int
+	// Mutex to protect shared resources (config, runner, validator) during command execution
+	cmdMutex sync.Mutex
 }
 
 // NewServer creates a new MCP server instance.
@@ -114,27 +117,18 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 	// Log the command attempt
 	s.logger.LogInfof("Command attempt: %s in directory: %s", commandStr, directory)
 
-	// First validate if the directory is allowed
-	dirAllowed, dirMessage := s.validator.IsDirectoryAllowed(directory)
-	if !dirAllowed {
-		s.logger.LogErrorf("Directory validation failed: %s", dirMessage)
-		return mcp.NewToolResultError("Directory validation failed: " + dirMessage), nil
-	}
-
 	// Create a buffer to capture the output
 	outputBuffer := new(strings.Builder)
 
-	// Set the working directory in the config
-	cfgCopy := *s.config
-	cfgCopy.WorkingDir = directory
+	// Acquire the lock to protect shared resources
+	s.cmdMutex.Lock()
+	defer s.cmdMutex.Unlock()
 
-	// Create a new runner with the updated config and output capture
-	tempValidator := validator.New(&cfgCopy, s.logger)
-	tempRunner := runner.New(&cfgCopy, tempValidator, s.logger)
-	tempRunner.SetOutputs(outputBuffer, outputBuffer)
+	// Set the outputs on the existing runner
+	s.runner.SetOutputs(outputBuffer, outputBuffer)
 
-	// Execute the command
-	err := tempRunner.RunCommand(ctx, commandStr)
+	// Execute the command with the specified directory
+	err := s.runner.RunCommand(ctx, commandStr, directory)
 	if err != nil {
 		s.logger.LogErrorf("Command execution failed: %v", err)
 		return mcp.NewToolResultError(fmt.Sprintf("Command execution failed: %v", err)), nil

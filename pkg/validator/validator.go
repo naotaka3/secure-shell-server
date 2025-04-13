@@ -34,9 +34,9 @@ func New(config *config.ShellCommandConfig, logger *logger.Logger) *CommandValid
 
 // IsDirectoryAllowed checks if a given directory is allowed to run commands in.
 func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
-	// If the directory is empty, use the working directory from the config
+	// If the directory is empty, it cannot be validated
 	if dir == "" {
-		dir = v.config.WorkingDir
+		return false, "empty directory path is not allowed"
 	}
 
 	// Check if the directory is in the allowed directories list or is a subdirectory of an allowed directory
