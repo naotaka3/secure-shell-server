@@ -30,8 +30,13 @@ type Server struct {
 }
 
 // NewServer creates a new MCP server instance.
-func NewServer(cfg *config.ShellCommandConfig, port int) *Server {
-	loggerObj := logger.New()
+func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Server, error) {
+	// Create logger with optional path
+	loggerObj, err := logger.NewWithPath(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
+
 	validatorObj := validator.New(cfg, loggerObj)
 	runnerObj := runner.New(cfg, validatorObj, loggerObj)
 
@@ -49,7 +54,7 @@ func NewServer(cfg *config.ShellCommandConfig, port int) *Server {
 		logger:    loggerObj,
 		mcpServer: mcpServer,
 		port:      port,
-	}
+	}, nil
 }
 
 // Start initializes and starts the MCP server.

@@ -32,6 +32,7 @@ func run() int {
 	port := flag.Int("port", defaultPort, "Port to listen on")
 	configFile := flag.String("config", "", "Path to configuration file")
 	stdio := flag.Bool("stdio", true, "Use stdin/stdout for MCP communication")
+	logPath := flag.String("log", "", "Path to the log file (if empty, no logging occurs)")
 
 	// Parse the flags
 	flag.Parse()
@@ -52,12 +53,15 @@ func run() int {
 		return 1
 	}
 
-	// Create server
-	mcpServer := service.NewServer(cfg, *port)
+	// Create server with optional log path
+	mcpServer, err := service.NewServer(cfg, *port, *logPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating server: %v\n", err)
+		return 1
+	}
 
 	// Start the server using stdio or HTTP
 	if *stdio {
-		fmt.Println("Starting MCP server using stdin/stdout...")
 		if err := mcpServer.ServeStdio(); err != nil {
 			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 			return 1
