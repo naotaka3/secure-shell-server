@@ -19,12 +19,10 @@
     }
   ],
   "denyCommands": [
-    "rm",
-    "mv",
-    "vi",
-    "nano",
-    "wget",
-    "curl",
+    {
+      "command": "rm",
+      "message": "Run `git rm` instead of rm"
+    },
     {
       "command": "cd",
       "message": "Specify directory in arguments instead of using cd"
