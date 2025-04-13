@@ -5,6 +5,9 @@
     "cat",
     "echo",
     "grep",
+    "find",
+    "head",
+    "tail",
     {
       "command": "git",
       "subCommands": ["status", "pull", "fetch", "log", "diff"],
@@ -13,26 +16,23 @@
     {
       "command": "docker",
       "subCommands": ["ps", "logs", "info", "inspect"]
-    },
-    "find",
-    "head",
-    "tail"
+    }
   ],
   "denyCommands": [
     "rm",
     "mv",
-    {
-      "command": "sudo",
-      "message": "Elevated privileges are not allowed"
-    },
-    {
-      "command": "ssh",
-      "message": "Remote connections are disabled for security reasons"
-    },
     "vi",
     "nano",
     "wget",
-    "curl"
+    "curl",
+    {
+      "command": "cd",
+      "message": "Specify directory in arguments instead of using cd"
+    },
+    {
+      "command": "sudo",
+      "message": "Elevated privileges are not allowed"
+    }
   ],
   "defaultErrorMessage": "This command is not allowed by security policy. Please contact your administrator if you need access.",
   "blockLogPath": "/var/log/secure-shell/blocked-commands.log",
