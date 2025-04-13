@@ -1,20 +1,31 @@
 # Secure Shell Server
 
-A Go-based tool for secure execution of shell commands using the `mvdan.cc/sh/v3` package. The tool validates and restricts commands to a predefined allowlist, enforcing secure shell operations while preventing unauthorized or potentially harmful commands.
+A Go-based MCP (Model Context Protocol) server designed to prevent Large Language Models (LLMs) from executing dangerous shell commands. The server provides a sandboxed environment that validates all commands against an allowlist, restricting operations to only those explicitly permitted.
+
+## Important Security Notice
+
+While this server implements multiple security measures, it cannot guarantee complete protection against all malicious commands or sophisticated attacks. Users should:
+
+- Carefully configure the allowlist to include only necessary commands
+- Regularly review logs for suspicious activity
+- Use this as one layer in a comprehensive security strategy
+- Not rely solely on this tool for high-security environments
 
 ## Features
 
-- **Command Validation**: Parses user-provided shell scripts using the `syntax` package and validates that only allowed commands are used.
+- **Command Allowlisting**: Parses user-provided shell scripts and validates that only allowed commands are used.
 - **Secure Execution**: Uses a custom runner to enforce the allowlist during command execution.
-- **Environment Restrictions**: Limits access to the file system, environment variables, and system resources.
+- **Directory Restrictions**: Limits file system access to only explicitly allowed directories.
+- **Path Validation**: Verifies all path arguments to prevent access to unauthorized directories.
+- **Timeout Enforcement**: Automatically terminates long-running commands to prevent resource exhaustion.
 - **Detailed Logging**: Logs all command attempts and execution results for auditing and debugging.
-- **MCP Server Mode**: Provides a service interface for secure command execution.
+- **MCP Server Mode**: Functions as a Model Context Protocol (MCP) server for secure command execution.
 
 ## Installation
 
 ```bash
-go get github.com/shimizu1995/secure-shell-server
-cd $GOPATH/src/github.com/shimizu1995/secure-shell-server
+go get /path/to/secure-shell-server
+cd /path/to/secure-shell-server
 make build
 ```
 
@@ -22,48 +33,39 @@ The binaries will be available in the `bin/` directory.
 
 ## Usage
 
-### Running a Command
-
-```bash
-./bin/secure-shell -script="ls -l"
-```
-
-### Running a Script
-
-```bash
-./bin/secure-shell -script="echo 'Hello, World!'; ls -l"
-```
-
-### Custom Configuration
-
-```bash
-./bin/secure-shell -script="grep pattern file.txt" -allow="ls,echo,cat,grep" -timeout=60 -dir="/safe/directory"
-```
-
 ### Starting the MCP Server
 
 ```bash
-./bin/server -port=8080
+./bin/server -config=/path/to/config.json
 ```
-
-or using standard input/output for MCP communication:
-
-```bash
-./bin/server -stdio
-```
-
-### Command-Line Options for secure-shell
-
-- `-script`: Script string to execute
-- `-allow`: Comma-separated list of allowed commands (default: "ls,echo,cat")
-- `-timeout`: Maximum execution time in seconds (default: 30)
-- `-dir`: Working directory for command execution
 
 ### Command-Line Options for server
 
-- `-port`: Port to listen on (default: 8080)
 - `-config`: Path to configuration file
 - `-stdio`: Use stdin/stdout for MCP communication
+- `-port`: Port to listen on (default: 8080, when not using stdio)
+
+## Claude Desktop Setup
+
+To use secure-shell-server with Claude Desktop:
+
+1. Edit your Claude Desktop configuration file located at:
+   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+2. Add the following to your configuration under the `tools` section:
+
+```json
+"shell": {
+  "command": "/path/to/secure-shell-server/bin/server",
+  "args": [
+    "-config",
+    "~/path/to/your/config.json"
+  ]
+}
+```
+
+3. Create a configuration file at a location of your choice (such as `~/.mcp_shell_config.json` on macOS or appropriate path on Windows) with your desired settings
+4. Restart Claude Desktop to apply the changes
 
 ## Design and Implementation
 
@@ -78,9 +80,17 @@ The Secure Shell Server follows a modular design with the following components:
 ## Security Considerations
 
 - Only explicitly allowlisted commands can be executed.
-- Environment variables are restricted to a predefined set.
+- File system access is restricted to specified directories.
 - Command execution is constrained by a configurable timeout.
-- Scripts are validated before execution to prevent harmful operations.
+- Scripts are validated before execution to prevent dangerous operations.
+- Special handling for commands like `find` and `xargs` that could execute other commands.
+- Path arguments are validated to prevent access to restricted areas.
+
+### Limitations
+
+- Cannot prevent all sophisticated attacks or command chaining techniques.
+- Command injection may still be possible in certain edge cases.
+- Security effectiveness depends heavily on proper configuration.
 
 ## Development
 
@@ -110,3 +120,9 @@ make lint
 ## License
 
 This project is licensed under the terms found in the LICENSE file.
+
+### Third-Party Licenses
+
+This project uses the following third-party libraries:
+
+- `mvdan.cc/sh/v3`: Licensed under the BSD-3-Clause license.
