@@ -106,6 +106,16 @@ func (v *CommandValidator) isPathLike(arg string) bool {
 
 // ValidateCommand checks if a command is allowed based on the configuration.
 func (v *CommandValidator) ValidateCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Special handling for xargs command
+	if cmd == "xargs" {
+		return v.validateXargsCommand(args, workDir)
+	}
+
+	// Special handling for find command with -exec
+	if cmd == "find" {
+		return v.validateFindCommand(args, workDir)
+	}
+
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
 		v.logBlockedCommand(cmd, args, message)
@@ -201,6 +211,97 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 	}
 
 	return true, ""
+}
+
+// validateXargsCommand checks if the command executed by xargs is allowed.
+func (v *CommandValidator) validateXargsCommand(args []string, workDir string) (bool, string) {
+	// First check if xargs itself is allowed
+	if denied, message := v.isCommandExplicitlyDenied("xargs"); denied {
+		v.logBlockedCommand("xargs", args, message)
+		return false, message
+	}
+
+	// Check if xargs is explicitly allowed
+	if !v.config.IsCommandAllowed("xargs") {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", "xargs", v.config.DefaultErrorMessage)
+		v.logBlockedCommand("xargs", args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Parse the xargs command to extract the actual command
+	parser := NewXargsParser()
+	xargsCmd, xargsArgs, valid, errMsg := parser.ParseXargsCommand(args)
+
+	if !valid {
+		v.logBlockedCommand("xargs", args, errMsg)
+		return false, errMsg
+	}
+
+	// Now validate the command that xargs will execute
+	allowed, message := v.ValidateCommand(xargsCmd, xargsArgs, workDir)
+	if !allowed {
+		// Add context that this is from an xargs command
+		message = "xargs would execute disallowed command: " + message
+		v.logBlockedCommand("xargs", args, message)
+		return false, message
+	}
+
+	return true, ""
+}
+
+// validateFindCommand checks if find command has -exec with allowed commands only.
+func (v *CommandValidator) validateFindCommand(args []string, workDir string) (bool, string) {
+	// First check if find itself is allowed
+	if denied, message := v.isCommandExplicitlyDenied("find"); denied {
+		v.logBlockedCommand("find", args, message)
+		return false, message
+	}
+
+	// Check if find is explicitly allowed
+	if !v.config.IsCommandAllowed("find") {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", "find", v.config.DefaultErrorMessage)
+		v.logBlockedCommand("find", args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Check for -exec commands in find args
+	parser := NewFindParser()
+	execCommands, hasExec, errMsg := parser.ParseFindExecArgs(args)
+
+	if errMsg != "" {
+		v.logBlockedCommand("find", args, errMsg)
+		return false, errMsg
+	}
+
+	// If no -exec found, the find command is allowed (we still need to validate paths)
+	if !hasExec {
+		// Filter out special characters used by find -exec syntax before path validation
+		filteredArgs := parser.FilterFindSpecialArgs(args)
+		return v.validatePathArguments("find", filteredArgs, workDir)
+	}
+
+	// Validate each -exec command
+	for _, execCmd := range execCommands {
+		// Check if the command is explicitly denied
+		if denied, message := v.isCommandExplicitlyDenied(execCmd); denied {
+			message = "find command contains disallowed -exec: " + message
+			v.logBlockedCommand("find", args, message)
+			return false, message
+		}
+
+		// Check if the command is explicitly allowed
+		if !v.config.IsCommandAllowed(execCmd) {
+			deniedMessage := fmt.Sprintf("find command contains disallowed -exec: command %q is not permitted: %s",
+				execCmd, v.config.DefaultErrorMessage)
+			v.logBlockedCommand("find", args, deniedMessage)
+			return false, deniedMessage
+		}
+	}
+
+	// If all -exec commands are allowed, validate path arguments
+	// Filter out special characters used by find -exec syntax before path validation
+	filteredArgs := parser.FilterFindSpecialArgs(args)
+	return v.validatePathArguments("find", filteredArgs, workDir)
 }
 
 // logBlockedCommand logs blocked commands to the specified file.
