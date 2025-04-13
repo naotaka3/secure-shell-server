@@ -49,8 +49,61 @@ func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
 	return false, fmt.Sprintf("directory %q is not allowed: %s", dir, v.config.DefaultErrorMessage)
 }
 
+// IsPathInAllowedDirectory checks if a given path (absolute or relative) is within any of the allowed directories.
+func (v *CommandValidator) IsPathInAllowedDirectory(path string, baseDir string) (bool, string) {
+	// Handle empty path
+	if path == "" {
+		return false, "empty path is not allowed"
+	}
+
+	// Determine if the path is absolute or relative
+	var absPath string
+	var err error
+	if filepath.IsAbs(path) {
+		absPath = path
+	} else {
+		// For relative paths, join with the base directory
+		absPath = filepath.Join(baseDir, path)
+	}
+
+	// Clean the path to resolve any . or .. components
+	absPath = filepath.Clean(absPath)
+
+	// Get absolute path to ensure proper comparison
+	absPath, err = filepath.Abs(absPath)
+	if err != nil {
+		return false, fmt.Sprintf("failed to resolve absolute path: %v", err)
+	}
+
+	// Check if the resolved path is within any allowed directory
+	for _, allowedDir := range v.config.AllowedDirectories {
+		// Get absolute path of allowed directory for proper comparison
+		allowedAbsDir, err := filepath.Abs(allowedDir)
+		if err != nil {
+			continue // Skip directories that can't be resolved
+		}
+
+		// Check if path is within the allowed directory
+		if strings.HasPrefix(absPath, allowedAbsDir) {
+			return true, ""
+		}
+	}
+
+	return false, fmt.Sprintf("path %q is outside of allowed directories: %s", path, v.config.DefaultErrorMessage)
+}
+
+// isPathLike checks if an argument looks like a file path.
+func (v *CommandValidator) isPathLike(arg string) bool {
+	// Check if the argument contains path separators or starts with common path prefixes
+	return strings.Contains(arg, string(os.PathSeparator)) ||
+		strings.HasPrefix(arg, "./") ||
+		strings.HasPrefix(arg, "../") ||
+		strings.HasPrefix(arg, "~") ||
+		strings.HasPrefix(arg, ".")
+}
+
 // ValidateCommand checks if a command is allowed based on the configuration.
-func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, string) {
+func (v *CommandValidator) ValidateCommand(cmd string, args []string, workDir string) (bool, string) {
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
 		v.logBlockedCommand(cmd, args, message)
@@ -62,7 +115,8 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, str
 		if allowed.Command == cmd {
 			// If there are no subcommands specified, the command is allowed without restrictions
 			if len(allowed.SubCommands) == 0 && len(allowed.DenySubCommands) == 0 {
-				return true, ""
+				// Check path-like arguments even for fully allowed commands
+				return v.validatePathArguments(cmd, args, workDir)
 			}
 
 			// Check subcommand permissions
@@ -70,7 +124,8 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, str
 				return false, message
 			}
 
-			return true, ""
+			// If subcommand is allowed, also validate any path-like arguments
+			return v.validatePathArguments(cmd, args, workDir)
 		}
 	}
 
@@ -78,6 +133,25 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string) (bool, str
 	deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
 	v.logBlockedCommand(cmd, args, deniedMessage)
 	return false, deniedMessage
+}
+
+// validatePathArguments checks if any path-like arguments are within allowed directories.
+func (v *CommandValidator) validatePathArguments(cmd string, args []string, workDir string) (bool, string) {
+	for _, arg := range args {
+		// Skip arguments that don't look like paths or that start with a dash (flags)
+		if strings.HasPrefix(arg, "-") || !v.isPathLike(arg) {
+			continue
+		}
+
+		// Validate the path argument
+		allowed, message := v.IsPathInAllowedDirectory(arg, workDir)
+		if !allowed {
+			v.logBlockedCommand(cmd, args, message)
+			return false, message
+		}
+	}
+
+	return true, ""
 }
 
 // isCommandExplicitlyDenied checks if a command is explicitly denied in the configuration.

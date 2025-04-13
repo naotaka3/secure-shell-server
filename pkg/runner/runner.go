@@ -77,7 +77,7 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 
 	callFunc := func(_ context.Context, args []string) ([]string, error) {
 		cmd := args[0]
-		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:])
+		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:], absWorkingDir)
 		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
@@ -91,10 +91,10 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	// Create a custom OpenHandler for security checks
 	openHandler := func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 		// Get absolute path of the file
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, err)
-			return nil, &os.PathError{Op: "open", Path: path, Err: err}
+		absPath, absErr := filepath.Abs(path)
+		if absErr != nil {
+			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
+			return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
 		}
 
 		// Check if file is in an allowed directory
@@ -129,5 +129,10 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	}
 
 	err = runner.Run(ctx, prog)
+	// if err != nil {
+	// 	r.logger.LogInfof("Command execution failed: %v", err)
+	// 	return nil // Return nil because the given command is allowed
+	// }
+
 	return err
 }
