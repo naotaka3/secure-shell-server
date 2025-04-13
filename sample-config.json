@@ -34,7 +34,7 @@
       "message": "Elevated privileges are not allowed"
     }
   ],
-  "defaultErrorMessage": "This command is not allowed by security policy. Please contact your administrator if you need access.",
+  "defaultErrorMessage": "This command is not allowed.",
   "blockLogPath": "/var/log/secure-shell/blocked-commands.log",
   "maxExecutionTime": 60
 }
