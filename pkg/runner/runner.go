@@ -94,18 +94,8 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(expand.ListEnviron(envPairs...)),
+		interp.Dir(workingDir),
 	)
-
-	// Set working directory if specified
-	if workingDir != "" {
-		dir := interp.Dir(workingDir)
-		err = dir(runner)
-		if err != nil {
-			r.logger.LogErrorf("Failed to set working directory: %v", err)
-			return fmt.Errorf("failed to set working directory: %w", err)
-		}
-	}
-
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)
 		return fmt.Errorf("interpreter creation error: %w", err)
