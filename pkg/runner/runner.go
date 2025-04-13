@@ -44,6 +44,7 @@ func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
 }
 
 // RunCommand runs a shell command in the specified working directory.
+// It enforces security constraints by validating commands and file access.
 func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) error {
 	// Get absolute path of the working directory
 	absWorkingDir, err := filepath.Abs(workingDir)
@@ -76,7 +77,7 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 
 	callFunc := func(_ context.Context, args []string) ([]string, error) {
 		cmd := args[0]
-		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:])
+		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:], absWorkingDir)
 		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
@@ -87,12 +88,40 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		return args, nil
 	}
 
+	// Create a custom OpenHandler for security checks
+	openHandler := func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+		// Get absolute path of the file
+		absPath, absErr := filepath.Abs(path)
+		if absErr != nil {
+			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
+			return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
+		}
+
+		// Check if file is in an allowed directory
+		// First check if the file's directory is allowed
+		fileDir := filepath.Dir(absPath)
+		allowed, disallowedMessage := r.validator.IsDirectoryAllowed(fileDir)
+
+		if !allowed {
+			r.logger.LogErrorf("File access attempted outside allowed directories: %s", absPath)
+			return nil, &os.PathError{
+				Op:   "open",
+				Path: path,
+				Err:  fmt.Errorf("access denied: file is outside allowed directories: %s", disallowedMessage),
+			}
+		}
+
+		// Delegate to the default open handler
+		return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+	}
+
 	// Create interpreter
 	runner, err := interp.New(
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(nil),
 		interp.Dir(absWorkingDir),
+		interp.OpenHandler(openHandler),
 	)
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)

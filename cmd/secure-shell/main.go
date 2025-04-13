@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
@@ -22,10 +21,10 @@ func main() {
 func run() int {
 	// Define command-line flags
 	scriptStr := flag.String("script", "", "Script string to execute")
-	allowedCommands := flag.String("allow", "ls,echo,cat", "Comma-separated list of allowed commands")
 	maxTime := flag.Int("timeout", config.DefaultExecutionTimeout, "Maximum execution time in seconds")
 	workingDir := flag.String("dir", "", "Working directory for command execution")
 	logPath := flag.String("log", "", "Path to the log file (if empty, no logging occurs)")
+	configPath := flag.String("config", "", "Path to the configuration file (if empty, uses default configuration)")
 
 	flag.Parse()
 
@@ -39,20 +38,24 @@ func run() int {
 	}
 	defer log.Close()
 
-	// Create config with allowed commands
-	cfg := config.NewDefaultConfig()
-	cfg.MaxExecutionTime = *maxTime
+	// Create config from file or use default
+	var cfg *config.ShellCommandConfig
+	var configErr error
 
-	// Clear the default allowed commands and add the ones from command line
-	cfg.AllowCommands = nil
-
-	// Parse and add allowed commands
-	for _, cmd := range strings.Split(*allowedCommands, ",") {
-		cmd = strings.TrimSpace(cmd)
-		if cmd != "" {
-			cfg.AllowCommands = append(cfg.AllowCommands, config.AllowCommand{Command: cmd})
-		}
+	if *configPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: Configuration file must be specified with -config flag\n")
+		return 1
 	}
+
+	// Load configuration from file
+	cfg, configErr = config.LoadConfigFromFile(*configPath)
+	if configErr != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration file: %v\n", configErr)
+		return 1
+	}
+
+	// Override config with command-line flags if specified
+	cfg.MaxExecutionTime = *maxTime
 
 	// Create validator and runner
 	validatorObj := validator.New(cfg, log)
