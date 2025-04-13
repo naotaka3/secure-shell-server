@@ -13,9 +13,19 @@ import (
 
 // TestIsPathInAllowedDirectory tests the IsPathInAllowedDirectory function.
 func TestIsPathInAllowedDirectory(t *testing.T) {
-	// Setup test config
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
+	// Setup test config with temp directories
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories:  []string{"/home", "/tmp"},
+		AllowedDirectories:  []string{tempHomeDir, tempWorkDir},
 		DefaultErrorMessage: "Path not allowed by security policy",
 	}
 
@@ -26,12 +36,12 @@ func TestIsPathInAllowedDirectory(t *testing.T) {
 	// Create the validator
 	v := New(cfg, log)
 
-	// Get current working directory for relative path tests
-	cwd, err := os.Getwd()
+	// Create a subdirectory for testing inside workdir
+	tempSubDir := filepath.Join(tempWorkDir, "subdir")
+	err = os.Mkdir(tempSubDir, 0o755)
 	if err != nil {
-		t.Fatalf("Failed to get current working directory: %v", err)
+		t.Fatalf("Failed to create temp subdirectory: %v", err)
 	}
-	println("Current working directory:", cwd)
 
 	// Test cases
 	tests := []struct {
@@ -42,20 +52,21 @@ func TestIsPathInAllowedDirectory(t *testing.T) {
 		wantError bool
 	}{
 		// Absolute paths tests
-		{name: "AllowedAbsolutePath", path: "/tmp/file.txt", baseDir: cwd, allowed: true, wantError: false},
-		{name: "AllowedAbsolutePathInSubdir", path: "/tmp/subdir/file.txt", baseDir: cwd, allowed: true, wantError: false},
-		{name: "DisallowedAbsolutePath", path: "/etc/passwd", baseDir: cwd, allowed: false, wantError: true},
+		{name: "AllowedAbsolutePath", path: filepath.Join(tempHomeDir, "file.txt"), baseDir: tempWorkDir, allowed: true, wantError: false},
+		{name: "AllowedAbsolutePathInSubdir", path: filepath.Join(tempWorkDir, "subdir", "file.txt"), baseDir: tempHomeDir, allowed: true, wantError: false},
+		{name: "DisallowedAbsolutePath", path: "/etc/passwd", baseDir: tempWorkDir, allowed: false, wantError: true},
 
 		// Relative paths tests
-		// {name: "RelativePathToAllowed", path: "../../../tmp/file.txt", baseDir: cwd, allowed: true, wantError: false}, // TODO
-		{name: "RelativePathToDisallowed", path: "../../../etc/passwd", baseDir: cwd, allowed: false, wantError: true},
-		{name: "SimpleRelativePath", path: "./file.txt", baseDir: "/tmp", allowed: true, wantError: false},
-		{name: "DotDotRelativePath", path: "../file.txt", baseDir: "/tmp/subdir", allowed: true, wantError: false},
+		{name: "RelativePathToAllowed", path: "./file.txt", baseDir: tempHomeDir, allowed: true, wantError: false},
+		{name: "RelativePathWithinAllowed", path: "subdir/file.txt", baseDir: tempWorkDir, allowed: true, wantError: false},
+		{name: "SimpleRelativePath", path: "./file.txt", baseDir: tempWorkDir, allowed: true, wantError: false},
+		{name: "DotDotRelativePath", path: "../file.txt", baseDir: tempSubDir, allowed: true, wantError: false},
+		{name: "RelativePathToDisallowed", path: "../../etc/passwd", baseDir: tempSubDir, allowed: false, wantError: true},
 
 		// Edge cases
-		{name: "EmptyPath", path: "", baseDir: cwd, allowed: false, wantError: true},
-		{name: "PathWithDots", path: "/tmp/../tmp/./file.txt", baseDir: cwd, allowed: true, wantError: false},
-		{name: "EscapeAttempt", path: "/tmp/../etc/passwd", baseDir: cwd, allowed: false, wantError: true},
+		{name: "EmptyPath", path: "", baseDir: tempWorkDir, allowed: false, wantError: true},
+		{name: "PathWithDots", path: filepath.Join(tempWorkDir, "..", filepath.Base(tempWorkDir), "file.txt"), baseDir: tempHomeDir, allowed: true, wantError: false},
+		{name: "EscapeAttempt", path: filepath.Join(tempWorkDir, "..", "etc", "passwd"), baseDir: tempHomeDir, allowed: false, wantError: true},
 	}
 
 	for _, tt := range tests {
@@ -94,7 +105,7 @@ func TestIsPathLike(t *testing.T) {
 		{name: "ParentDirPath", arg: "../file.txt", isPath: true},
 		{name: "HomeDirPath", arg: "~/file.txt", isPath: true},
 		{name: "HiddenFile", arg: ".config", isPath: true},
-		// {name: "WindowsPath", arg: "C:\\Users\\file.txt", isPath: true}, // TODO
+		{name: "WindowsPath", arg: "C:\\Users\\file.txt", isPath: true},
 		{name: "NotAPath", arg: "hello", isPath: false},
 		{name: "Flag", arg: "-la", isPath: false},
 		{name: "LongFlag", arg: "--recursive", isPath: false},
@@ -113,9 +124,19 @@ func TestIsPathLike(t *testing.T) {
 
 // TestValidatePathArguments tests the validatePathArguments function.
 func TestValidatePathArguments(t *testing.T) {
-	// Setup test config
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
+	// Setup test config with temp directories
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories:  []string{"/home", "/tmp"},
+		AllowedDirectories:  []string{tempHomeDir, tempWorkDir},
 		DefaultErrorMessage: "Path not allowed by security policy",
 	}
 
@@ -134,12 +155,12 @@ func TestValidatePathArguments(t *testing.T) {
 		workDir string
 		allowed bool
 	}{
-		{name: "AllPathsAllowed", cmd: "cp", args: []string{"/tmp/file1.txt", "/tmp/file2.txt"}, workDir: "/home", allowed: true},
-		{name: "OnePathDisallowed", cmd: "cp", args: []string{"/tmp/file.txt", "/etc/passwd"}, workDir: "/home", allowed: false},
-		{name: "RelativePathsAllowed", cmd: "mv", args: []string{"./file1.txt", "./file2.txt"}, workDir: "/tmp", allowed: true},
-		{name: "MixedPathsWithDisallowed", cmd: "ln", args: []string{"/tmp/file.txt", "/var/log/test.log"}, workDir: "/home", allowed: false},
-		{name: "NoPathArguments", cmd: "echo", args: []string{"hello", "world"}, workDir: "/home", allowed: true},
-		{name: "FlagsWithPaths", cmd: "ls", args: []string{"-la", "/tmp"}, workDir: "/home", allowed: true},
+		{name: "AllPathsAllowed", cmd: "cp", args: []string{filepath.Join(tempWorkDir, "file1.txt"), filepath.Join(tempWorkDir, "file2.txt")}, workDir: tempHomeDir, allowed: true},
+		{name: "OnePathDisallowed", cmd: "cp", args: []string{filepath.Join(tempWorkDir, "file.txt"), "/etc/passwd"}, workDir: tempHomeDir, allowed: false},
+		{name: "RelativePathsAllowed", cmd: "mv", args: []string{"./file1.txt", "./file2.txt"}, workDir: tempWorkDir, allowed: true},
+		{name: "MixedPathsWithDisallowed", cmd: "ln", args: []string{filepath.Join(tempWorkDir, "file.txt"), "/var/log/test.log"}, workDir: tempHomeDir, allowed: false},
+		{name: "NoPathArguments", cmd: "echo", args: []string{"hello", "world"}, workDir: tempHomeDir, allowed: true},
+		{name: "FlagsWithPaths", cmd: "ls", args: []string{"-la", tempWorkDir}, workDir: tempHomeDir, allowed: true},
 		{name: "DisallowedRelativePath", cmd: "cat", args: []string{"../etc/passwd"}, workDir: "/var", allowed: false},
 	}
 
@@ -158,9 +179,19 @@ func TestValidatePathArguments(t *testing.T) {
 
 // TestValidateCommand tests the ValidateCommand function with various scenarios.
 func TestValidateCommand(t *testing.T) {
-	// Setup test config
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
+	// Setup test config with temp directories
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories: []string{"/home", "/tmp"},
+		AllowedDirectories: []string{tempHomeDir, tempWorkDir},
 		AllowCommands: []config.AllowCommand{
 			{Command: "ls"}, // Command with no subcommand restrictions
 			{Command: "cat"},
@@ -197,15 +228,15 @@ func TestValidateCommand(t *testing.T) {
 		// Test additional allowed commands
 		{name: "LsCommand", cmd: "ls", args: []string{"-la"}, allowed: true, message: ""},
 		{name: "EchoCommand", cmd: "echo", args: []string{"hello"}, allowed: true, message: ""},
-		{name: "CatCommand", cmd: "cat", args: []string{"/tmp/file.txt"}, allowed: true, message: ""},
-		{name: "GrepCommand", cmd: "grep", args: []string{"pattern", "file.txt"}, allowed: true, message: ""},
-		// {name: "FindCommand", cmd: "find", args: []string{".", "-name", "*.txt"}, allowed: true, message: ""},	// TODO
+		{name: "CatCommand", cmd: "cat", args: []string{filepath.Join(tempWorkDir, "file.txt")}, allowed: true, message: ""},
+		{name: "GrepCommand", cmd: "grep", args: []string{"pattern", filepath.Join(tempWorkDir, "file.txt")}, allowed: true, message: ""},
+		{name: "FindCommand", cmd: "find", args: []string{tempWorkDir, "-name", "*.txt"}, allowed: true, message: ""},
 
 		// Test denied commands
-		{name: "ExplicitlyDeniedCommand", cmd: "rm", args: []string{"-rf", "/tmp"}, allowed: false, message: "command \"rm\" is denied: Remove command is not allowed"},
+		{name: "ExplicitlyDeniedCommand", cmd: "rm", args: []string{"-rf", tempWorkDir}, allowed: false, message: "command \"rm\" is denied: Remove command is not allowed"},
 		{name: "DeniedCommandWithCustomMessage", cmd: "sudo", args: []string{"apt-get", "update"}, allowed: false, message: "command \"sudo\" is denied: Sudo is not allowed for security reasons"},
 		{name: "UnlistedCommand", cmd: "wget", args: []string{"https://example.com"}, allowed: false, message: "command \"wget\" is not permitted: Command not allowed by security policy"},
-		{name: "ChmodNotInAllowList", cmd: "chmod", args: []string{"777", "file.txt"}, allowed: false, message: "command \"chmod\" is not permitted: Command not allowed by security policy"},
+		{name: "ChmodNotInAllowList", cmd: "chmod", args: []string{"777", filepath.Join(tempWorkDir, "file.txt")}, allowed: false, message: "command \"chmod\" is not permitted: Command not allowed by security policy"},
 
 		// Test git-specific subcommands
 		{name: "GitStatusAllowed", cmd: "git", args: []string{"status"}, allowed: true, message: ""},
@@ -254,6 +285,16 @@ func TestValidateCommand(t *testing.T) {
 
 // TestCommandLogging tests the command logging functionality.
 func TestCommandLogging(t *testing.T) {
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
 	// Create a temporary directory for the log file
 	tempDir := t.TempDir()
 
@@ -262,7 +303,7 @@ func TestCommandLogging(t *testing.T) {
 
 	// Setup test config with log path
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories:  []string{"/home", "/tmp"},
+		AllowedDirectories:  []string{tempHomeDir, tempWorkDir},
 		AllowCommands:       []config.AllowCommand{{Command: "ls"}},
 		DenyCommands:        []config.DenyCommand{{Command: "rm"}},
 		DefaultErrorMessage: "Command not allowed",
@@ -278,7 +319,7 @@ func TestCommandLogging(t *testing.T) {
 
 	// Test blocked command to trigger logging
 	wd, _ := os.Getwd()
-	v.ValidateCommand("rm", []string{"-rf", "/tmp"}, wd)
+	v.ValidateCommand("rm", []string{"-rf", tempWorkDir}, wd)
 
 	// Check if log file was created and contains the expected content
 	logContent, err := os.ReadFile(logPath)
@@ -287,19 +328,29 @@ func TestCommandLogging(t *testing.T) {
 	}
 
 	logStr := string(logContent)
-	if !strings.Contains(logStr, "[BLOCKED] Command: rm [-rf /tmp]") {
+	if !strings.Contains(logStr, "[BLOCKED] Command: rm [-rf ") || !strings.Contains(logStr, filepath.Base(tempWorkDir)) {
 		t.Errorf("Expected blocked command log entry, got: %s", logStr)
 	}
 }
 
 // TestLogBlockedCommandError tests error handling in logBlockedCommand.
 func TestLogBlockedCommandError(t *testing.T) {
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
 	// Create a non-existent directory path
 	testDir := "/non-existent-dir-" + tempDirSuffix()
 
 	// Setup test config with invalid log path
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories:  []string{"/home", "/tmp"},
+		AllowedDirectories:  []string{tempHomeDir, tempWorkDir},
 		AllowCommands:       []config.AllowCommand{{Command: "ls"}},
 		DenyCommands:        []config.DenyCommand{{Command: "rm"}},
 		DefaultErrorMessage: "Command not allowed",
@@ -315,7 +366,7 @@ func TestLogBlockedCommandError(t *testing.T) {
 
 	// Test blocked command to trigger logging attempt
 	wd, _ := os.Getwd()
-	v.ValidateCommand("rm", []string{"-rf", "/tmp"}, wd)
+	v.ValidateCommand("rm", []string{"-rf", tempWorkDir}, wd)
 
 	// Check if error was logged
 	if !strings.Contains(logBuffer.String(), "Failed to create directory for block log") {
@@ -335,9 +386,19 @@ func tempDirSuffix() string {
 
 // TestNoLogPathSet tests that no logging occurs when BlockLogPath is empty.
 func TestNoLogPathSet(t *testing.T) {
+	// Create temporary directories for testing
+	tempHomeDir := t.TempDir()
+	tempWorkDir := filepath.Join(t.TempDir(), "workdir")
+
+	// Create the workdir subdirectory
+	err := os.Mkdir(tempWorkDir, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create temp work directory: %v", err)
+	}
+
 	// Setup test config with no log path
 	cfg := &config.ShellCommandConfig{
-		AllowedDirectories:  []string{"/home", "/tmp"},
+		AllowedDirectories:  []string{tempHomeDir, tempWorkDir},
 		AllowCommands:       []config.AllowCommand{{Command: "ls"}},
 		DenyCommands:        []config.DenyCommand{{Command: "rm"}},
 		DefaultErrorMessage: "Command not allowed",
@@ -353,7 +414,7 @@ func TestNoLogPathSet(t *testing.T) {
 
 	// Test blocked command
 	wd, _ := os.Getwd()
-	v.ValidateCommand("rm", []string{"-rf", "/tmp"}, wd)
+	v.ValidateCommand("rm", []string{"-rf", tempWorkDir}, wd)
 
 	// Verify no errors about log file creation were logged
 	if strings.Contains(logBuffer.String(), "Failed to create directory for block log") {

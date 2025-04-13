@@ -96,6 +96,8 @@ func (v *CommandValidator) IsPathInAllowedDirectory(path string, baseDir string)
 func (v *CommandValidator) isPathLike(arg string) bool {
 	// Check if the argument contains path separators or starts with common path prefixes
 	return strings.Contains(arg, string(os.PathSeparator)) ||
+		strings.Contains(arg, "/") || // For Unix paths
+		strings.Contains(arg, "\\") || // For Windows paths
 		strings.HasPrefix(arg, "./") ||
 		strings.HasPrefix(arg, "../") ||
 		strings.HasPrefix(arg, "~") ||
