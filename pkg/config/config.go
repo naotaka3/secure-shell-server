@@ -33,6 +33,43 @@ type ShellCommandConfig struct {
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface for ShellCommandConfig.
+func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		AllowedDirectories  []string        `json:"allowedDirectories"`
+		AllowCommands       json.RawMessage `json:"allowCommands"`
+		DenyCommands        json.RawMessage `json:"denyCommands"`
+		DefaultErrorMessage string          `json:"defaultErrorMessage"`
+		BlockLogPath        string          `json:"blockLogPath,omitempty"`
+		MaxExecutionTime    int             `json:"maxExecutionTime,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Handle AllowCommands with custom unmarshaling
+	allowCommands, err := UnmarshalAllowCommands(raw.AllowCommands)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling allow commands: %w", err)
+	}
+
+	// Handle DenyCommands with custom unmarshaling
+	denyCommands, err := UnmarshalDenyCommands(raw.DenyCommands)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling deny commands: %w", err)
+	}
+
+	c.AllowedDirectories = raw.AllowedDirectories
+	c.AllowCommands = allowCommands
+	c.DenyCommands = denyCommands
+	c.DefaultErrorMessage = raw.DefaultErrorMessage
+	c.BlockLogPath = raw.BlockLogPath
+	c.MaxExecutionTime = raw.MaxExecutionTime
+
+	return nil
+}
+
 // NewDefaultConfig returns a default configuration.
 func NewDefaultConfig() *ShellCommandConfig {
 	return &ShellCommandConfig{
@@ -50,15 +87,13 @@ func NewDefaultConfig() *ShellCommandConfig {
 
 // LoadConfigFromFile loads the configuration from a JSON file.
 func LoadConfigFromFile(filePath string) (*ShellCommandConfig, error) {
-	file, err := os.Open(filePath)
+	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
+		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	defer file.Close()
 
 	var config ShellCommandConfig
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&config); err != nil {
+	if err := json.Unmarshal(fileBytes, &config); err != nil {
 		return nil, fmt.Errorf("failed to decode config file: %w", err)
 	}
 
