@@ -106,6 +106,11 @@ func (v *CommandValidator) isPathLike(arg string) bool {
 
 // ValidateCommand checks if a command is allowed based on the configuration.
 func (v *CommandValidator) ValidateCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Special handling for xargs command
+	if cmd == "xargs" {
+		return v.validateXargsCommand(args, workDir)
+	}
+
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
 		v.logBlockedCommand(cmd, args, message)
@@ -198,6 +203,42 @@ func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string,
 				return false, deniedMessage
 			}
 		}
+	}
+
+	return true, ""
+}
+
+// validateXargsCommand checks if the command executed by xargs is allowed.
+func (v *CommandValidator) validateXargsCommand(args []string, workDir string) (bool, string) {
+	// First check if xargs itself is allowed
+	if denied, message := v.isCommandExplicitlyDenied("xargs"); denied {
+		v.logBlockedCommand("xargs", args, message)
+		return false, message
+	}
+
+	// Check if xargs is explicitly allowed
+	if !v.config.IsCommandAllowed("xargs") {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", "xargs", v.config.DefaultErrorMessage)
+		v.logBlockedCommand("xargs", args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Parse the xargs command to extract the actual command
+	parser := NewXargsParser()
+	xargsCmd, xargsArgs, valid, errMsg := parser.ParseXargsCommand(args)
+
+	if !valid {
+		v.logBlockedCommand("xargs", args, errMsg)
+		return false, errMsg
+	}
+
+	// Now validate the command that xargs will execute
+	allowed, message := v.ValidateCommand(xargsCmd, xargsArgs, workDir)
+	if !allowed {
+		// Add context that this is from an xargs command
+		message = "xargs would execute disallowed command: " + message
+		v.logBlockedCommand("xargs", args, message)
+		return false, message
 	}
 
 	return true, ""
