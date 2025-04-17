@@ -11,7 +11,7 @@ tool (
 
 require (
 	github.com/alecthomas/assert/v2 v2.11.0
-	github.com/mark3labs/mcp-go v0.20.0
+	github.com/mark3labs/mcp-go v0.21.1
 	mvdan.cc/sh/v3 v3.11.0
 )
 
