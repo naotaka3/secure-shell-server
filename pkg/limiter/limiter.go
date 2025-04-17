@@ -90,6 +90,7 @@ func (ol *OutputLimiter) GetRemainingBytes() int {
 // the remaining output size.
 func (ol *OutputLimiter) getTruncationMessage() string {
 	remaining := ol.TotalInputBytes - ol.BytesWritten
-	return fmt.Sprintf("\n\n[Output truncated, exceeded %d bytes limit. %d bytes remaining]\n",
+	return fmt.Sprintf("\n\n[Output truncated, exceeded %d bytes limit. %d bytes remaining]\n"+
+		"If you need to view the complete output, consider using commands like tail or modifying your command to ensure the output stays within the limits.",
 		ol.MaxBytes, remaining)
 }

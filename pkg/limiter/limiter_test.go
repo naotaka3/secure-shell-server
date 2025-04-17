@@ -56,7 +56,9 @@ func TestOutputLimiterBasic(t *testing.T) {
 		// Should contain 50 'a's + 50 'b's + truncation message
 		// Expected message now includes the remaining bytes info
 		expectedPrefix := string(toWrite1) + string(toWrite2[:50])
-		expected := expectedPrefix + fmt.Sprintf("\n\n[Output truncated, exceeded %d bytes limit. %d bytes remaining]\n", limiter.MaxBytes, 50)
+		expected := expectedPrefix + fmt.Sprintf("\n\n[Output truncated, exceeded %d bytes limit. %d bytes remaining]\n"+
+			"If you need to view the complete output, consider using commands like tail or modifying your command to ensure the output stays within the limits.",
+			limiter.MaxBytes, 50)
 		assert.Equal(t, expected, buf.String())
 	})
 
