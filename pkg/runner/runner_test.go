@@ -24,10 +24,10 @@ func TestOutputLimiter(t *testing.T) {
 
 	// Create validators and loggers
 	log := logger.New()
-	validator := validator.New(conf, log)
+	validatorObj := validator.New(conf, log)
 
 	// Create a runner
-	runner := New(conf, validator, log)
+	runner := New(conf, validatorObj, log)
 
 	// Create buffers to capture output
 	stdoutBuf := &bytes.Buffer{}
@@ -68,6 +68,77 @@ func TestOutputLimiter(t *testing.T) {
 		assert.True(t, len(output) < 200, "Output should be truncated")
 		assert.True(t, strings.Contains(output, "truncated"), "Truncation message should be present")
 	}
+}
+
+// TestGetTruncationDetails tests the GetTruncationDetails method of SafeRunner.
+func TestGetTruncationDetails(t *testing.T) {
+	// Create a configuration with a small output limit
+	conf := config.NewDefaultConfig()
+	conf.MaxOutputSize = 50 // Tiny limit for testing
+
+	// Allow additional commands that we need for testing
+	conf.AddAllowedCommand("yes")
+	conf.AddAllowedCommand("head")
+
+	// Create validators and loggers
+	log := logger.New()
+	validatorObj := validator.New(conf, log)
+
+	// Create a runner
+	runner := New(conf, validatorObj, log)
+
+	// Create buffers to capture output
+	stdoutBuf := &bytes.Buffer{}
+	stderrBuf := &bytes.Buffer{}
+
+	// Set the buffers as outputs
+	runner.SetOutputs(stdoutBuf, stderrBuf)
+
+	// Generate output to stdout only
+	command := "yes | head -n 100"
+	err := runner.RunCommand(t.Context(), command, "/tmp")
+	assert.NoError(t, err)
+
+	// Check truncation details
+	stdoutTruncated, stderrTruncated, stdoutRemaining, stderrRemaining := runner.GetTruncationDetails()
+
+	// Stdout should be truncated with some remaining bytes
+	assert.True(t, stdoutTruncated, "Stdout should be truncated")
+	assert.False(t, stderrTruncated, "Stderr should not be truncated")
+	assert.True(t, stdoutRemaining > 0, "Stdout should have remaining bytes")
+	assert.Equal(t, 0, stderrRemaining, "Stderr should have no remaining bytes")
+
+	// Test with output to stderr
+	stdoutBuf.Reset()
+	stderrBuf.Reset()
+	runner.SetOutputs(stdoutBuf, stderrBuf)
+
+	// Generate output to stderr
+	command = "yes | head -n 100 >&2"
+	err = runner.RunCommand(t.Context(), command, "/tmp")
+	assert.NoError(t, err)
+
+	// Check truncation details again
+	stdoutTruncated, stderrTruncated, stdoutRemaining, stderrRemaining = runner.GetTruncationDetails()
+
+	// Now stderr should be truncated
+	assert.False(t, stdoutTruncated, "Stdout should not be truncated")
+	assert.True(t, stderrTruncated, "Stderr should be truncated")
+	assert.Equal(t, 0, stdoutRemaining, "Stdout should have no remaining bytes")
+	assert.True(t, stderrRemaining > 0, "Stderr should have remaining bytes")
+
+	// Test with no truncation
+	conf = config.NewDefaultConfig()
+	conf.MaxOutputSize = 0 // No limit
+	validatorObj = validator.New(conf, log)
+	runner = New(conf, validatorObj, log)
+	runner.SetOutputs(stdoutBuf, stderrBuf)
+
+	stdoutTruncated, stderrTruncated, stdoutRemaining, stderrRemaining = runner.GetTruncationDetails()
+	assert.False(t, stdoutTruncated, "Stdout should not be truncated with no limit")
+	assert.False(t, stderrTruncated, "Stderr should not be truncated with no limit")
+	assert.Equal(t, 0, stdoutRemaining, "Stdout should have no remaining bytes with no limit")
+	assert.Equal(t, 0, stderrRemaining, "Stderr should have no remaining bytes with no limit")
 }
 
 func TestSafeRunner_RunCommand(t *testing.T) {
@@ -124,8 +195,8 @@ func TestSafeRunner_RunCommand(t *testing.T) {
 			testCfg := config.NewDefaultConfig()
 			testCfg.AllowedDirectories = tt.allowedDirs
 			testLog := logger.New()
-			testValidator := validator.New(testCfg, testLog)
-			testRunner := New(testCfg, testValidator, testLog)
+			testValidatorObj := validator.New(testCfg, testLog)
+			testRunner := New(testCfg, testValidatorObj, testLog)
 
 			// Reset the output buffers
 			stdout.Reset()

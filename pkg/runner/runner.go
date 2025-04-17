@@ -80,6 +80,25 @@ func (r *SafeRunner) GetTruncationStatus() (stdoutTruncated bool, stderrTruncate
 	return
 }
 
+// GetTruncationDetails returns detailed information about truncation, including which
+// outputs were truncated and how many bytes remained unwritten for each.
+func (r *SafeRunner) GetTruncationDetails() (stdoutTruncated bool, stderrTruncated bool, stdoutRemainingBytes int, stderrRemainingBytes int) {
+	stdoutTruncated = r.stdoutLimiter != nil && r.stdoutLimiter.WasTruncated()
+	stderrTruncated = r.stderrLimiter != nil && r.stderrLimiter.WasTruncated()
+
+	stdoutRemainingBytes = 0
+	if stdoutTruncated {
+		stdoutRemainingBytes = r.stdoutLimiter.GetRemainingBytes()
+	}
+
+	stderrRemainingBytes = 0
+	if stderrTruncated {
+		stderrRemainingBytes = r.stderrLimiter.GetRemainingBytes()
+	}
+
+	return
+}
+
 // RunCommand runs a shell command in the specified working directory.
 // It enforces security constraints by validating commands and file access.
 func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) error {
