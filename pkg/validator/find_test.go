@@ -73,9 +73,9 @@ func testMultipleExecCommands(t *testing.T, parser *FindParser) {
 		{
 			name: "MultipleExecs",
 			args: []string{
-				"-type", "f", 
-				"-name", "*.txt", 
-				"-exec", "grep", "pattern", "{}", "\\;", 
+				"-type", "f",
+				"-name", "*.txt",
+				"-exec", "grep", "pattern", "{}", "\\;",
 				"-exec", "cp", "{}", "/backup/", "\\;",
 			},
 			wantCmds:   []string{"grep", "cp"},
@@ -85,8 +85,8 @@ func testMultipleExecCommands(t *testing.T, parser *FindParser) {
 		{
 			name: "MixedExecAndExecdir",
 			args: []string{
-				"-type", "f", 
-				"-exec", "ls", "-la", "{}", "\\;", 
+				"-type", "f",
+				"-exec", "ls", "-la", "{}", "\\;",
 				"-execdir", "chmod", "644", "{}", "\\;",
 			},
 			wantCmds:   []string{"ls", "chmod"},
@@ -161,10 +161,10 @@ func runFindParserTests(t *testing.T, parser *FindParser, tests []struct {
 	}
 }
 
-// TestFilterFindSpecialArgs tests the FilterFindSpecialArgs function
+// TestFilterFindSpecialArgs tests the FilterFindSpecialArgs function.
 func TestFilterFindSpecialArgs(t *testing.T) {
 	parser := NewFindParser()
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -177,7 +177,7 @@ func TestFilterFindSpecialArgs(t *testing.T) {
 		},
 		{
 			name:     "WithSemicolon",
-			args:     []string{"-name", "*.txt", "-exec", "echo", "{}" , ";"},
+			args:     []string{"-name", "*.txt", "-exec", "echo", "{}", ";"},
 			expected: []string{"-name", "*.txt", "-exec", "echo", "{}"},
 		},
 		{
@@ -201,7 +201,7 @@ func TestFilterFindSpecialArgs(t *testing.T) {
 			expected: []string{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parser.FilterFindSpecialArgs(tt.args)
