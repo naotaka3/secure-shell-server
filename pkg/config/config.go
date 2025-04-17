@@ -9,6 +9,9 @@ import (
 // Default execution timeout in seconds.
 const DefaultExecutionTimeout = 30
 
+// Default max output size in bytes (50KB).
+const DefaultMaxOutputSize = 50 * 1024
+
 // DenyCommand represents a command that is explicitly denied.
 type DenyCommand struct {
 	Command string `json:"command"`
@@ -31,6 +34,8 @@ type ShellCommandConfig struct {
 	BlockLogPath        string         `json:"blockLogPath,omitempty"`
 	// MaxExecutionTime is the maximum execution time in seconds
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
+	// MaxOutputSize is the maximum size of command output in bytes
+	MaxOutputSize int `json:"maxOutputSize,omitempty"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for ShellCommandConfig.
@@ -42,6 +47,7 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 		DefaultErrorMessage string          `json:"defaultErrorMessage"`
 		BlockLogPath        string          `json:"blockLogPath,omitempty"`
 		MaxExecutionTime    int             `json:"maxExecutionTime,omitempty"`
+		MaxOutputSize       int             `json:"maxOutputSize,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -66,6 +72,7 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 	c.DefaultErrorMessage = raw.DefaultErrorMessage
 	c.BlockLogPath = raw.BlockLogPath
 	c.MaxExecutionTime = raw.MaxExecutionTime
+	c.MaxOutputSize = raw.MaxOutputSize
 
 	return nil
 }
@@ -82,6 +89,7 @@ func NewDefaultConfig() *ShellCommandConfig {
 		DenyCommands:        []DenyCommand{{Command: "rm", Message: "Remove command is not allowed"}},
 		DefaultErrorMessage: "Command not allowed by security policy",
 		MaxExecutionTime:    DefaultExecutionTimeout,
+		MaxOutputSize:       DefaultMaxOutputSize,
 	}
 }
 
