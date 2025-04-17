@@ -69,10 +69,29 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 	c.AllowedDirectories = raw.AllowedDirectories
 	c.AllowCommands = allowCommands
 	c.DenyCommands = denyCommands
-	c.DefaultErrorMessage = raw.DefaultErrorMessage
+	
+	// Use default values if not specified
+	if raw.DefaultErrorMessage != "" {
+		c.DefaultErrorMessage = raw.DefaultErrorMessage
+	} else {
+		c.DefaultErrorMessage = "Command not allowed by security policy"
+	}
+	
 	c.BlockLogPath = raw.BlockLogPath
-	c.MaxExecutionTime = raw.MaxExecutionTime
-	c.MaxOutputSize = raw.MaxOutputSize
+	
+	// Use default execution time if not specified or invalid
+	if raw.MaxExecutionTime > 0 {
+		c.MaxExecutionTime = raw.MaxExecutionTime
+	} else {
+		c.MaxExecutionTime = DefaultExecutionTimeout
+	}
+	
+	// Use default output size if not specified or invalid
+	if raw.MaxOutputSize > 0 {
+		c.MaxOutputSize = raw.MaxOutputSize
+	} else {
+		c.MaxOutputSize = DefaultMaxOutputSize
+	}
 
 	return nil
 }
