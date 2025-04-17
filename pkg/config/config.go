@@ -9,6 +9,9 @@ import (
 // Default execution timeout in seconds.
 const DefaultExecutionTimeout = 30
 
+// Default max output size in bytes (50KB).
+const DefaultMaxOutputSize = 50 * 1024
+
 // DenyCommand represents a command that is explicitly denied.
 type DenyCommand struct {
 	Command string `json:"command"`
@@ -31,6 +34,8 @@ type ShellCommandConfig struct {
 	BlockLogPath        string         `json:"blockLogPath,omitempty"`
 	// MaxExecutionTime is the maximum execution time in seconds
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
+	// MaxOutputSize is the maximum size of command output in bytes
+	MaxOutputSize int `json:"maxOutputSize,omitempty"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for ShellCommandConfig.
@@ -42,6 +47,7 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 		DefaultErrorMessage string          `json:"defaultErrorMessage"`
 		BlockLogPath        string          `json:"blockLogPath,omitempty"`
 		MaxExecutionTime    int             `json:"maxExecutionTime,omitempty"`
+		MaxOutputSize       int             `json:"maxOutputSize,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -63,9 +69,29 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 	c.AllowedDirectories = raw.AllowedDirectories
 	c.AllowCommands = allowCommands
 	c.DenyCommands = denyCommands
-	c.DefaultErrorMessage = raw.DefaultErrorMessage
+
+	// Use default values if not specified
+	if raw.DefaultErrorMessage != "" {
+		c.DefaultErrorMessage = raw.DefaultErrorMessage
+	} else {
+		c.DefaultErrorMessage = "Command not allowed by security policy"
+	}
+
 	c.BlockLogPath = raw.BlockLogPath
-	c.MaxExecutionTime = raw.MaxExecutionTime
+
+	// Use default execution time if not specified or invalid
+	if raw.MaxExecutionTime > 0 {
+		c.MaxExecutionTime = raw.MaxExecutionTime
+	} else {
+		c.MaxExecutionTime = DefaultExecutionTimeout
+	}
+
+	// Use default output size if not specified or invalid
+	if raw.MaxOutputSize > 0 {
+		c.MaxOutputSize = raw.MaxOutputSize
+	} else {
+		c.MaxOutputSize = DefaultMaxOutputSize
+	}
 
 	return nil
 }
@@ -82,6 +108,7 @@ func NewDefaultConfig() *ShellCommandConfig {
 		DenyCommands:        []DenyCommand{{Command: "rm", Message: "Remove command is not allowed"}},
 		DefaultErrorMessage: "Command not allowed by security policy",
 		MaxExecutionTime:    DefaultExecutionTimeout,
+		MaxOutputSize:       DefaultMaxOutputSize,
 	}
 }
 

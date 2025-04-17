@@ -13,6 +13,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
+	"github.com/shimizu1995/secure-shell-server/pkg/limiter"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
@@ -24,23 +25,78 @@ type SafeRunner struct {
 	logger    *logger.Logger
 	stdout    io.Writer
 	stderr    io.Writer
+	// Output limiters to track truncation
+	stdoutLimiter *limiter.OutputLimiter
+	stderrLimiter *limiter.OutputLimiter
 }
 
 // New creates a new SafeRunner.
 func New(config *config.ShellCommandConfig, validator *validator.CommandValidator, logger *logger.Logger) *SafeRunner {
 	return &SafeRunner{
-		config:    config,
-		validator: validator,
-		logger:    logger,
-		stdout:    os.Stdout,
-		stderr:    os.Stderr,
+		config:        config,
+		validator:     validator,
+		logger:        logger,
+		stdout:        os.Stdout,
+		stderr:        os.Stderr,
+		stdoutLimiter: nil,
+		stderrLimiter: nil,
 	}
 }
 
 // SetOutputs sets the stdout and stderr writers.
 func (r *SafeRunner) SetOutputs(stdout, stderr io.Writer) {
-	r.stdout = stdout
-	r.stderr = stderr
+	// If MaxOutputSize is set, wrap the writers with limiters
+	if r.config.MaxOutputSize > 0 {
+		r.stdoutLimiter = limiter.NewOutputLimiter(stdout, r.config.MaxOutputSize)
+		r.stderrLimiter = limiter.NewOutputLimiter(stderr, r.config.MaxOutputSize)
+		r.stdout = r.stdoutLimiter
+		r.stderr = r.stderrLimiter
+	} else {
+		// Use the writers directly if no limit is set
+		r.stdout = stdout
+		r.stderr = stderr
+		r.stdoutLimiter = nil
+		r.stderrLimiter = nil
+	}
+}
+
+// RunCommand runs a shell command in the specified working directory.
+// It enforces security constraints by validating commands and file access.
+// WasOutputTruncated returns whether stdout or stderr was truncated due to size limits.
+func (r *SafeRunner) WasOutputTruncated() bool {
+	if r.stdoutLimiter != nil && r.stdoutLimiter.WasTruncated() {
+		return true
+	}
+	if r.stderrLimiter != nil && r.stderrLimiter.WasTruncated() {
+		return true
+	}
+	return false
+}
+
+// GetTruncationStatus returns detailed information about which outputs were truncated.
+func (r *SafeRunner) GetTruncationStatus() (stdoutTruncated bool, stderrTruncated bool) {
+	stdoutTruncated = r.stdoutLimiter != nil && r.stdoutLimiter.WasTruncated()
+	stderrTruncated = r.stderrLimiter != nil && r.stderrLimiter.WasTruncated()
+	return
+}
+
+// GetTruncationDetails returns detailed information about truncation, including which
+// outputs were truncated and how many bytes remained unwritten for each.
+func (r *SafeRunner) GetTruncationDetails() (stdoutTruncated bool, stderrTruncated bool, stdoutRemainingBytes int, stderrRemainingBytes int) {
+	stdoutTruncated = r.stdoutLimiter != nil && r.stdoutLimiter.WasTruncated()
+	stderrTruncated = r.stderrLimiter != nil && r.stderrLimiter.WasTruncated()
+
+	stdoutRemainingBytes = 0
+	if stdoutTruncated {
+		stdoutRemainingBytes = r.stdoutLimiter.GetRemainingBytes()
+	}
+
+	stderrRemainingBytes = 0
+	if stderrTruncated {
+		stderrRemainingBytes = r.stderrLimiter.GetRemainingBytes()
+	}
+
+	return
 }
 
 // RunCommand runs a shell command in the specified working directory.

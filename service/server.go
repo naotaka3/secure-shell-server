@@ -17,6 +17,22 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
 
+// createRunCommandTool creates the common run_command tool with appropriate descriptions.
+func createRunCommandTool() mcp.Tool {
+	return mcp.NewTool("run_command",
+		mcp.WithDescription("Run shell commands in specific directories (only within allowed paths).\n"+
+			"The \"directory\" parameter sets the working directory automatically; \"cd\" command isn't needed."),
+		mcp.WithString("command",
+			mcp.Required(),
+			mcp.Description("Command to execute"),
+		),
+		mcp.WithString("directory",
+			mcp.Required(),
+			mcp.Description("Working directory to execute the command in."),
+		),
+	)
+}
+
 // Server is the MCP server for secure shell execution.
 type Server struct {
 	config    *config.ShellCommandConfig
@@ -60,17 +76,7 @@ func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Serve
 // Start initializes and starts the MCP server.
 func (s *Server) Start() error {
 	// Register the run_command tool
-	runCommandTool := mcp.NewTool("run_command",
-		mcp.WithDescription("Run shell commands in specific directories (only within allowed paths).\nThe \"directory\" parameter sets the working directory automatically; \"cd\" command isn't needed."),
-		mcp.WithString("command",
-			mcp.Required(),
-			mcp.Description("Command to execute"),
-		),
-		mcp.WithString("directory",
-			mcp.Required(),
-			mcp.Description("Working directory to execute the command in."),
-		),
-	)
+	runCommandTool := createRunCommandTool()
 
 	// Add the tool handler
 	s.mcpServer.AddTool(runCommandTool, s.handleRunCommand)
@@ -147,17 +153,7 @@ func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolReque
 // ServeStdio starts an MCP server using stdin/stdout for communication.
 func (s *Server) ServeStdio() error {
 	// Register the run_command tool
-	runCommandTool := mcp.NewTool("run_command",
-		mcp.WithDescription("Run shell commands in specific directories (only within allowed paths).\nThe \"directory\" parameter sets the working directory automatically; \"cd\" command isn't needed."),
-		mcp.WithString("command",
-			mcp.Required(),
-			mcp.Description("Command to execute"),
-		),
-		mcp.WithString("directory",
-			mcp.Required(),
-			mcp.Description("Working directory to execute the command in."),
-		),
-	)
+	runCommandTool := createRunCommandTool()
 
 	// Add the tool handler
 	s.mcpServer.AddTool(runCommandTool, s.handleRunCommand)

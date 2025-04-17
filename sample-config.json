@@ -34,5 +34,6 @@
   ],
   "defaultErrorMessage": "This command is not allowed.",
   "blockLogPath": "/var/log/secure-shell/blocked-commands.log",
-  "maxExecutionTime": 60
+  "maxExecutionTime": 60,
+  "maxOutputSize": 51200
 }
