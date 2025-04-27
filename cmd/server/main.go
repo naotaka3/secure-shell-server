@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
+	"github.com/shimizu1995/secure-shell-server/pkg/utils"
 	"github.com/shimizu1995/secure-shell-server/service"
 )
 
@@ -51,6 +52,14 @@ func run() int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		return 1
+	}
+
+	// Ensure log directory exists if log path is specified
+	if *logPath != "" {
+		if dirErr := utils.EnsureLogDirectory(*logPath); dirErr != nil {
+			fmt.Fprintf(os.Stderr, "Error creating log directory: %v\n", dirErr)
+			return 1
+		}
 	}
 
 	// Create server with optional log path
