@@ -10,6 +10,7 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/runner"
+	"github.com/shimizu1995/secure-shell-server/pkg/utils"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
 
@@ -27,6 +28,14 @@ func run() int {
 	configPath := flag.String("config", "", "Path to the configuration file (if empty, uses default configuration)")
 
 	flag.Parse()
+
+	// Ensure log directory exists if log path is specified
+	if *logPath != "" {
+		if err := utils.EnsureLogDirectory(*logPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating log directory: %v\n", err)
+			return 1
+		}
+	}
 
 	// Create logger with optional path
 	var log *logger.Logger
