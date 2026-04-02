@@ -69,6 +69,36 @@ Claude Desktop で secure-shell-server を使用するには：
 3. 任意の場所（macOS では `~/.mcp_shell_config.json` など）に設定ファイルを作成します
 4. Claude Desktop を再起動して変更を適用します
 
+## MCP ツール
+
+サーバーは 2 つの MCP ツールを公開します：
+
+### `change_directory`
+
+後続のコマンドの作業ディレクトリを設定します。コマンド実行前に必ず呼び出す必要があります。ディレクトリは設定ファイルの `allowedDirectories` 内である必要があります。
+
+| パラメータ | 必須 | 説明 |
+|-----------|------|------|
+| `directory` | はい | 作業ディレクトリとして設定するディレクトリ |
+
+### `run`
+
+現在の作業ディレクトリ（`change_directory` で設定）でシェルコマンドを実行します。許可されたコマンドのみ実行可能です。
+
+| パラメータ | 必須 | 説明 |
+|-----------|------|------|
+| `command` | はい | 実行するコマンド |
+
+### 使用フロー
+
+```
+1. change_directory(directory: "/home/user/project")  -> 作業ディレクトリを設定
+2. run(command: "ls -la")                              -> コマンド実行
+3. run(command: "echo hello")                          -> ディレクトリは維持される
+4. change_directory(directory: "/tmp")                  -> ディレクトリ変更
+5. run(command: "pwd")                                 -> /tmp で実行
+```
+
 ## 設定
 
 セキュリティポリシーは JSON 設定ファイルで定義します。ここでは主要な設定オプション、特にサブコマンドとフラグ拒否機能について説明します。

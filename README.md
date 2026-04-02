@@ -69,6 +69,36 @@ To use secure-shell-server with Claude Desktop:
 3. Create a configuration file at a location of your choice (such as `~/.mcp_shell_config.json` on macOS or appropriate path on Windows) with your desired settings
 4. Restart Claude Desktop to apply the changes
 
+## MCP Tools
+
+The server exposes two MCP tools:
+
+### `change_directory`
+
+Set the working directory for subsequent commands. Must be called before running any commands. The directory must be within the configured `allowedDirectories`.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `directory` | Yes | The directory to set as the working directory |
+
+### `run`
+
+Run a shell command in the current working directory (set via `change_directory`). Only allowed commands within allowed paths are permitted.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `command` | Yes | Command to execute |
+
+### Usage Flow
+
+```
+1. change_directory(directory: "/home/user/project")  -> Set working directory
+2. run(command: "ls -la")                              -> Execute command
+3. run(command: "echo hello")                          -> Directory persists
+4. change_directory(directory: "/tmp")                  -> Change directory
+5. run(command: "pwd")                                 -> Now in /tmp
+```
+
 ## Configuration
 
 The security policy is defined in a JSON configuration file. This section explains the key configuration options, particularly the subcommand and flag denial features.
