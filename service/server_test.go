@@ -86,13 +86,37 @@ func newTestServer(t *testing.T) (*service.Server, string) {
 	return srv, tmpDir
 }
 
-func TestChangeDirectory(t *testing.T) {
+func TestPwd(t *testing.T) {
+	srv, tmpDir := newTestServer(t)
+	ctx := t.Context()
+
+	t.Run("returns error when no directory set", func(t *testing.T) {
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+
+	t.Run("returns directory after cd", func(t *testing.T) {
+		_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": tmpDir,
+		}))
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, tmpDir)
+	})
+}
+
+func TestCd(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
 
 	t.Run("allowed path succeeds", func(t *testing.T) {
-		result, err := srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-			"directory": tmpDir,
+		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": tmpDir,
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -101,8 +125,8 @@ func TestChangeDirectory(t *testing.T) {
 	})
 
 	t.Run("disallowed path fails", func(t *testing.T) {
-		result, err := srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-			"directory": "/usr/local",
+		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": "/usr/local",
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -111,8 +135,8 @@ func TestChangeDirectory(t *testing.T) {
 	})
 
 	t.Run("nonexistent path fails", func(t *testing.T) {
-		result, err := srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-			"directory": tmpDir + "/nonexistent",
+		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": tmpDir + "/nonexistent",
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -121,8 +145,8 @@ func TestChangeDirectory(t *testing.T) {
 	})
 
 	t.Run("empty string fails", func(t *testing.T) {
-		result, err := srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-			"directory": "",
+		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": "",
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -146,8 +170,8 @@ func TestRunCommand(t *testing.T) {
 	})
 
 	t.Run("single command succeeds", func(t *testing.T) {
-		_, _ = srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-			"directory": tmpDir,
+		_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+			"path": tmpDir,
 		}))
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"echo hello"},
@@ -205,8 +229,8 @@ func TestRunCommand(t *testing.T) {
 func TestRunCommandMultiple(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
-	_, _ = srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
-		"directory": tmpDir,
+	_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
+		"path": tmpDir,
 	}))
 
 	t.Run("parallel default", func(t *testing.T) {

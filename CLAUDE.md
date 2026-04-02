@@ -45,7 +45,7 @@ go test -race -run TestName ./pkg/validator/
   - `sed.go` — Blocks `e` command (shell execution)
   - `awk.go` — Blocks `system()`, pipes, `@load`
 - **`pkg/runner`** — Wraps `mvdan.cc/sh/v3` interpreter. Parses the full script, intercepts every command via `interp.CallHandler`, validates before allowing execution. Handles pipes, redirects, subshells.
-- **`service/server.go`** — MCP server exposing `run` and `change_directory` tools. Uses `sync.Mutex` for thread safety. Holds session state (`workingDir`) that must be set via `change_directory` before running commands.
+- **`service/server.go`** — MCP server exposing `run`, `cd`, and `pwd` tools. Uses `sync.Mutex` for thread safety. Holds session state (`workingDir`) that must be set via `cd` before running commands.
 
 ### Security Model
 
