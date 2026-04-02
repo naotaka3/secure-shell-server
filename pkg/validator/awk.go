@@ -148,9 +148,7 @@ func hasDangerousAwkPattern(script string) bool {
 	return false
 }
 
-// containsAwkGetlineFromFile detects awk patterns that read from files via getline.
-// Patterns: getline < "file", getline var < "file"
-// Safe: getline (from stdin), getline var (from stdin)
+// Safe: getline (from stdin), getline var (from stdin).
 func containsAwkGetlineFromFile(script string) bool {
 	idx := 0
 	for idx < len(script) {

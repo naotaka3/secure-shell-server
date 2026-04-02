@@ -199,7 +199,7 @@ func TestValidateCommand(t *testing.T) {
 			{Command: "grep"},
 			{Command: "find"},
 			{Command: "git", SubCommands: []config.SubCommandRule{{Name: "status"}, {Name: "log"}, {Name: "diff"}}, DenySubCommands: []string{"push", "commit"}},
-			{Command: "docker", DenySubCommands: []string{"rm", "exec", "run"}},                                                                                      // Command with denied subcommands
+			{Command: "docker", DenySubCommands: []string{"rm", "exec", "run"}},                                                             // Command with denied subcommands
 			{Command: "npm", SubCommands: []config.SubCommandRule{{Name: "install"}, {Name: "update"}}, DenySubCommands: []string{"audit"}}, // Command with both allowed and denied subcommands
 		},
 		DenyCommands: []config.DenyCommand{
