@@ -57,14 +57,14 @@ func TestIsCommandAllowed(t *testing.T) {
 
 func TestSubCommandRuleDeserialization(t *testing.T) {
 	tests := []struct {
-		name           string
-		json           string
-		wantName       string
-		wantDenyFlags  []string
-		wantSubCmds    int
-		wantDenySubs   []string
-		wantMessage    string
-		wantErr        bool
+		name          string
+		json          string
+		wantName      string
+		wantDenyFlags []string
+		wantSubCmds   int
+		wantDenySubs  []string
+		wantMessage   string
+		wantErr       bool
 	}{
 		{
 			name:     "string value becomes SubCommandRule with name only",
@@ -78,23 +78,23 @@ func TestSubCommandRuleDeserialization(t *testing.T) {
 			wantDenyFlags: []string{"-f", "--force"},
 		},
 		{
-			name:          "object with nested subCommands",
-			json:          `{"name": "compose", "subCommands": ["up", "down"]}`,
-			wantName:      "compose",
-			wantSubCmds:   2,
+			name:        "object with nested subCommands",
+			json:        `{"name": "compose", "subCommands": ["up", "down"]}`,
+			wantName:    "compose",
+			wantSubCmds: 2,
 		},
 		{
-			name:        "object with denySubCommands",
-			json:        `{"name": "branch", "denySubCommands": ["--set-upstream"]}`,
-			wantName:    "branch",
+			name:         "object with denySubCommands",
+			json:         `{"name": "branch", "denySubCommands": ["--set-upstream"]}`,
+			wantName:     "branch",
 			wantDenySubs: []string{"--set-upstream"},
 		},
 		{
-			name:        "object with message",
-			json:        `{"name": "push", "denyFlags": ["-f"], "message": "Force push is not allowed"}`,
-			wantName:    "push",
+			name:          "object with message",
+			json:          `{"name": "push", "denyFlags": ["-f"], "message": "Force push is not allowed"}`,
+			wantName:      "push",
 			wantDenyFlags: []string{"-f"},
-			wantMessage: "Force push is not allowed",
+			wantMessage:   "Force push is not allowed",
 		},
 		{
 			name: "deeply nested subCommands",
