@@ -116,6 +116,16 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string, workDir st
 		return v.validateFindCommand(args, workDir)
 	}
 
+	// Special handling for awk commands (awk, gawk, mawk, nawk)
+	if IsAwkCommand(cmd) {
+		return v.validateAwkCommand(cmd, args, workDir)
+	}
+
+	// Special handling for sed commands (sed, gsed)
+	if IsSedCommand(cmd) {
+		return v.validateSedCommand(cmd, args, workDir)
+	}
+
 	// Check if the command is explicitly denied
 	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
 		v.logBlockedCommand(cmd, args, message)
@@ -334,6 +344,62 @@ func (v *CommandValidator) validateFindCommand(args []string, workDir string) (b
 	// Filter out special characters used by find -exec syntax before path validation
 	filteredArgs := parser.FilterFindSpecialArgs(args)
 	return v.validatePathArguments("find", filteredArgs, workDir)
+}
+
+// validateAwkCommand checks if an awk command contains dangerous patterns.
+func (v *CommandValidator) validateAwkCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Check if the command is explicitly denied
+	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Check if the command is explicitly allowed
+	if !v.config.IsCommandAllowed(cmd) {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+		v.logBlockedCommand(cmd, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Check for dangerous patterns in awk script
+	awkValidator := NewAwkValidator()
+	if hasDanger, description := awkValidator.ValidateAwkArgs(args); hasDanger {
+		message := fmt.Sprintf("%s command blocked: %s", cmd, description)
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Validate path arguments, filtering out the awk script and flags
+	filteredArgs := filterAwkNonPathArgs(args)
+	return v.validatePathArguments(cmd, filteredArgs, workDir)
+}
+
+// validateSedCommand checks if a sed command contains dangerous patterns.
+func (v *CommandValidator) validateSedCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Check if the command is explicitly denied
+	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Check if the command is explicitly allowed
+	if !v.config.IsCommandAllowed(cmd) {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+		v.logBlockedCommand(cmd, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Check for dangerous patterns in sed script
+	sedValidator := NewSedValidator()
+	if hasDanger, description := sedValidator.ValidateSedArgs(args); hasDanger {
+		message := fmt.Sprintf("%s command blocked: %s", cmd, description)
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Validate path arguments, filtering out sed scripts and expressions
+	filteredArgs := filterSedNonPathArgs(args)
+	return v.validatePathArguments(cmd, filteredArgs, workDir)
 }
 
 // logBlockedCommand logs blocked commands to the specified file.
