@@ -137,7 +137,7 @@ func TestRunCommand(t *testing.T) {
 
 	t.Run("run without setting directory returns error", func(t *testing.T) {
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
-			"command": "echo hello",
+			"commands": []interface{}{"echo hello"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -145,12 +145,12 @@ func TestRunCommand(t *testing.T) {
 		assertToolError(t, result, "No working directory set")
 	})
 
-	t.Run("run after setting directory succeeds", func(t *testing.T) {
+	t.Run("single command succeeds", func(t *testing.T) {
 		_, _ = srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
 			"directory": tmpDir,
 		}))
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
-			"command": "echo hello",
+			"commands": []interface{}{"echo hello"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -158,10 +158,41 @@ func TestRunCommand(t *testing.T) {
 		assertToolSuccess(t, result, "hello")
 	})
 
-	t.Run("directory persists across commands", func(t *testing.T) {
+	t.Run("invalid mode returns error", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"echo hello"},
+			"mode":     "invalid",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "Mode must be")
+	})
+
+	t.Run("empty commands array fails", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "non-empty array")
+	})
+
+	t.Run("empty string in commands fails", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{""},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "non-empty string")
+	})
+
+	t.Run("directory persists across calls", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
-				"command": "echo persist",
+				"commands": []interface{}{"echo persist"},
 			}))
 			if err != nil {
 				t.Fatalf("run %d: unexpected error: %v", i, err)
@@ -169,15 +200,55 @@ func TestRunCommand(t *testing.T) {
 			assertToolSuccess(t, result, "persist")
 		}
 	})
+}
 
-	t.Run("empty command fails", func(t *testing.T) {
+func TestRunCommandMultiple(t *testing.T) {
+	srv, tmpDir := newTestServer(t)
+	ctx := t.Context()
+	_, _ = srv.HandleChangeDirectory(ctx, makeToolRequest(map[string]interface{}{
+		"directory": tmpDir,
+	}))
+
+	t.Run("parallel default", func(t *testing.T) {
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
-			"command": "",
+			"commands": []interface{}{"echo aaa", "echo bbb"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assertToolError(t, result, "non-empty string")
+		text := extractText(result)
+		if !strings.Contains(text, "aaa") || !strings.Contains(text, "bbb") {
+			t.Fatalf("expected both outputs, got: %s", text)
+		}
+	})
+
+	t.Run("serial mode", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"echo first", "echo second"},
+			"mode":     "serial",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		text := extractText(result)
+		if !strings.Contains(text, "first") || !strings.Contains(text, "second") {
+			t.Fatalf("expected both outputs, got: %s", text)
+		}
+	})
+
+	t.Run("serial stops on first error", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"rm forbidden", "echo should_not_run"},
+			"mode":     "serial",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		text := extractText(result)
+		if strings.Contains(text, "should_not_run") {
+			t.Fatalf("serial mode should have stopped on first error, got: %s", text)
+		}
+		assertToolError(t, result, "Error")
 	})
 }
 
