@@ -2,7 +2,9 @@ package validator
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
@@ -164,6 +166,98 @@ func runAwkValidationTests(t *testing.T, v *CommandValidator, tests []struct {
 	message string
 },
 ) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("Failed to get working directory: %v", err)
+			}
+
+			gotAllowed, gotMessage := v.ValidateCommand(tt.cmd, tt.args, wd)
+			if gotAllowed != tt.allowed {
+				t.Errorf("ValidateCommand() allowed = %v, want %v", gotAllowed, tt.allowed)
+			}
+			if gotMessage != tt.message {
+				t.Errorf("ValidateCommand() message = %q, want %q", gotMessage, tt.message)
+			}
+		})
+	}
+}
+
+// TestAwkScriptFileValidation tests that awk -f validates the content of script files.
+func TestAwkScriptFileValidation(t *testing.T) {
+	v, _ := createAwkTestValidator(t)
+	tempDir := t.TempDir()
+
+	// Create a malicious awk script with system() call
+	maliciousSystem := filepath.Join(tempDir, "evil_system.awk")
+	if err := os.WriteFile(maliciousSystem, []byte("BEGIN { system(\"id\") }\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create malicious awk script: %v", err)
+	}
+
+	// Create a malicious awk script with pipe getline
+	maliciousGetline := filepath.Join(tempDir, "evil_getline.awk")
+	if err := os.WriteFile(maliciousGetline, []byte("{\"date\" | getline d; print d}\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create malicious awk script: %v", err)
+	}
+
+	// Create a safe awk script
+	safeFile := filepath.Join(tempDir, "safe.awk")
+	if err := os.WriteFile(safeFile, []byte("{print $1}\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create safe awk script: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		cmd     string
+		args    []string
+		allowed bool
+		message string
+	}{
+		{
+			name:    "ScriptFileWithSystemCall",
+			cmd:     "awk",
+			args:    []string{"-f", maliciousSystem},
+			allowed: false,
+			message: "awk command blocked: awk script file contains dangerous command execution pattern",
+		},
+		{
+			name:    "ScriptFileWithPipeGetline",
+			cmd:     "awk",
+			args:    []string{"-f", maliciousGetline},
+			allowed: false,
+			message: "awk command blocked: awk script file contains dangerous command execution pattern",
+		},
+		{
+			name:    "SafeScriptFile",
+			cmd:     "awk",
+			args:    []string{"-f", safeFile},
+			allowed: true,
+			message: "",
+		},
+		{
+			name:    "NonExistentScriptFile",
+			cmd:     "awk",
+			args:    []string{"-f", filepath.Join(tempDir, "nonexistent.awk")},
+			allowed: false,
+			message: fmt.Sprintf("awk command blocked: cannot read awk script file %q for validation", filepath.Join(tempDir, "nonexistent.awk")),
+		},
+		{
+			name:    "LongFormFileFlag",
+			cmd:     "awk",
+			args:    []string{"--file", maliciousSystem},
+			allowed: false,
+			message: "awk command blocked: awk script file contains dangerous command execution pattern",
+		},
+		{
+			name:    "GawkScriptFileWithSystemCall",
+			cmd:     "gawk",
+			args:    []string{"-f", maliciousSystem},
+			allowed: false,
+			message: "gawk command blocked: awk script file contains dangerous command execution pattern",
+		},
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			wd, err := os.Getwd()

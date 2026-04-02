@@ -2,7 +2,9 @@ package validator
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
@@ -192,6 +194,98 @@ func runSedValidationTests(t *testing.T, v *CommandValidator, tests []struct {
 	message string
 },
 ) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("Failed to get working directory: %v", err)
+			}
+
+			gotAllowed, gotMessage := v.ValidateCommand(tt.cmd, tt.args, wd)
+			if gotAllowed != tt.allowed {
+				t.Errorf("ValidateCommand() allowed = %v, want %v", gotAllowed, tt.allowed)
+			}
+			if gotMessage != tt.message {
+				t.Errorf("ValidateCommand() message = %q, want %q", gotMessage, tt.message)
+			}
+		})
+	}
+}
+
+// TestSedScriptFileValidation tests that sed -f validates the content of script files.
+func TestSedScriptFileValidation(t *testing.T) {
+	v, _ := createSedTestValidator(t)
+	tempDir := t.TempDir()
+
+	// Create a malicious sed script file with 'e' command
+	maliciousFile := filepath.Join(tempDir, "evil.sed")
+	if err := os.WriteFile(maliciousFile, []byte("e date\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create malicious sed script: %v", err)
+	}
+
+	// Create a malicious sed script with s///e flag
+	maliciousSubstFile := filepath.Join(tempDir, "evil_subst.sed")
+	if err := os.WriteFile(maliciousSubstFile, []byte("s/foo/bar/e\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create malicious sed script: %v", err)
+	}
+
+	// Create a safe sed script file
+	safeFile := filepath.Join(tempDir, "safe.sed")
+	if err := os.WriteFile(safeFile, []byte("s/foo/bar/g\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create safe sed script: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		cmd     string
+		args    []string
+		allowed bool
+		message string
+	}{
+		{
+			name:    "ScriptFileWithECommand",
+			cmd:     "sed",
+			args:    []string{"-f", maliciousFile},
+			allowed: false,
+			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
+		},
+		{
+			name:    "ScriptFileWithSubstitutionEFlag",
+			cmd:     "sed",
+			args:    []string{"-f", maliciousSubstFile},
+			allowed: false,
+			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
+		},
+		{
+			name:    "SafeScriptFile",
+			cmd:     "sed",
+			args:    []string{"-f", safeFile},
+			allowed: true,
+			message: "",
+		},
+		{
+			name:    "NonExistentScriptFile",
+			cmd:     "sed",
+			args:    []string{"-f", filepath.Join(tempDir, "nonexistent.sed")},
+			allowed: false,
+			message: fmt.Sprintf("sed command blocked: cannot read sed script file %q for validation", filepath.Join(tempDir, "nonexistent.sed")),
+		},
+		{
+			name:    "LongFormFileFlag",
+			cmd:     "sed",
+			args:    []string{"--file", maliciousFile},
+			allowed: false,
+			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
+		},
+		{
+			name:    "GsedScriptFileWithECommand",
+			cmd:     "gsed",
+			args:    []string{"-f", maliciousFile},
+			allowed: false,
+			message: "gsed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
+		},
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			wd, err := os.Getwd()

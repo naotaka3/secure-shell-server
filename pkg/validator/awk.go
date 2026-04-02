@@ -1,6 +1,8 @@
 package validator
 
 import (
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -48,6 +50,21 @@ func (a *AwkValidator) ValidateAwkArgs(args []string) (bool, string) {
 			continue
 		}
 
+		// Check -f/--file flag: read and validate script file contents
+		if isAwkFileFlag(arg) {
+			if i+1 < len(args) {
+				i++
+				content, err := os.ReadFile(args[i])
+				if err != nil {
+					return true, fmt.Sprintf("cannot read awk script file %q for validation", args[i])
+				}
+				if hasDangerousAwkPattern(string(content)) {
+					return true, "awk script file contains dangerous command execution pattern"
+				}
+			}
+			continue
+		}
+
 		// Skip flags that take a non-script value argument
 		if isAwkNonScriptFlagWithValue(arg) {
 			i++ // skip the next argument (the value)
@@ -82,16 +99,24 @@ func isAwkScriptFlag(flag string) bool {
 }
 
 // isFlagWithAwkValue returns true if the awk flag takes a subsequent value argument.
-// This includes both script flags and non-script flags.
+// This includes script flags, file flags, and non-script flags.
 func isFlagWithAwkValue(flag string) bool {
-	return isAwkScriptFlag(flag) || isAwkNonScriptFlagWithValue(flag)
+	return isAwkScriptFlag(flag) || isAwkFileFlag(flag) || isAwkNonScriptFlagWithValue(flag)
+}
+
+// isAwkFileFlag returns true if the flag is -f/--file (script file flag).
+func isAwkFileFlag(flag string) bool {
+	switch flag {
+	case "-f", "--file":
+		return true
+	}
+	return false
 }
 
 // isAwkNonScriptFlagWithValue returns true if the flag takes a non-script value argument.
 func isAwkNonScriptFlagWithValue(flag string) bool {
 	switch flag {
-	case "-f", "--file",
-		"-v", "--assign",
+	case "-v", "--assign",
 		"-F", "--field-separator",
 		"-o", "--pretty-print":
 		return true
@@ -115,7 +140,61 @@ func hasDangerousAwkPattern(script string) bool {
 		return true
 	}
 
+	// Check for getline < "file" pattern which reads from arbitrary files
+	if containsAwkGetlineFromFile(script) {
+		return true
+	}
+
 	return false
+}
+
+// containsAwkGetlineFromFile detects awk patterns that read from files via getline.
+// Patterns: getline < "file", getline var < "file"
+// Safe: getline (from stdin), getline var (from stdin)
+func containsAwkGetlineFromFile(script string) bool {
+	idx := 0
+	for idx < len(script) {
+		glIdx := strings.Index(script[idx:], "getline")
+		if glIdx == -1 {
+			break
+		}
+		glIdx += idx
+
+		// Look for '<' after "getline" (possibly with variable name and whitespace in between)
+		rest := script[glIdx+len("getline"):]
+		// Skip optional whitespace and variable name, then look for '<'
+		i := 0
+		// Skip whitespace
+		for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+			i++
+		}
+		// Skip optional variable name (identifier)
+		if i < len(rest) && isAwkIdentStart(rest[i]) {
+			i++
+			for i < len(rest) && isAwkIdentChar(rest[i]) {
+				i++
+			}
+			// Skip whitespace after variable name
+			for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+				i++
+			}
+		}
+		// Check for '<'
+		if i < len(rest) && rest[i] == '<' {
+			return true
+		}
+
+		idx = glIdx + len("getline")
+	}
+	return false
+}
+
+func isAwkIdentStart(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+}
+
+func isAwkIdentChar(c byte) bool {
+	return isAwkIdentStart(c) || (c >= '0' && c <= '9')
 }
 
 // filterAwkNonPathArgs returns only the input file arguments from awk args,

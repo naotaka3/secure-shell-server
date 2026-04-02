@@ -12,13 +12,18 @@ func NewFindParser() *FindParser {
 	return &FindParser{}
 }
 
+// ExecCommand represents a command extracted from find -exec with its arguments.
+type ExecCommand struct {
+	Name string
+	Args []string
+}
+
 // ParseFindExecArgs parses find command arguments to extract the command executed by -exec.
 // Returns:
-// - The extracted command.
-// - The arguments for the command.
-// - Whether a command was successfully extracted.
+// - The extracted commands with their arguments.
+// - Whether any commands were successfully extracted.
 // - Error message if any.
-func (f *FindParser) ParseFindExecArgs(args []string) ([]string, bool, string) {
+func (f *FindParser) ParseFindExecArgs(args []string) ([]ExecCommand, bool, string) {
 	// No args is valid for find (lists current directory)
 	if len(args) == 0 {
 		return nil, false, ""
@@ -48,26 +53,36 @@ func (f *FindParser) FilterFindSpecialArgs(args []string) []string {
 }
 
 // extractExecCommands extracts all commands that follow -exec or -execdir in find arguments.
-func extractExecCommands(args []string) []string {
-	var commands []string
+func extractExecCommands(args []string) []ExecCommand {
+	var commands []ExecCommand
 	for i := 0; i < len(args)-1; i++ {
 		// Check for -exec or -execdir flags
 		if args[i] == "-exec" || args[i] == "-execdir" {
-			// Extract all arguments until \; or + is encountered
+			// Collect all arguments until \; or + is encountered
 			j := i + 1
+			var cmdParts []string
 			for j < len(args) {
 				// Check if we've reached the end of the command (\; or +)
 				if args[j] == ";" || args[j] == "\\;" || args[j] == "+" {
 					break
 				}
 
-				// Add the command or argument to our list
-				if j == i+1 && !strings.HasPrefix(args[j], "{") {
-					// This is the command itself, add it to our commands list
-					commands = append(commands, args[j])
+				// Skip {} placeholder
+				if args[j] != "{}" {
+					cmdParts = append(cmdParts, args[j])
 				}
 
 				j++
+			}
+
+			if len(cmdParts) > 0 && !strings.HasPrefix(cmdParts[0], "{") {
+				cmd := ExecCommand{
+					Name: cmdParts[0],
+				}
+				if len(cmdParts) > 1 {
+					cmd.Args = cmdParts[1:]
+				}
+				commands = append(commands, cmd)
 			}
 
 			// Skip to the end of this -exec clause

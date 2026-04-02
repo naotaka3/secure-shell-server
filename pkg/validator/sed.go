@@ -1,6 +1,8 @@
 package validator
 
 import (
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -40,7 +42,16 @@ func (s *SedValidator) ValidateSedArgs(args []string) (bool, string) {
 		}
 
 		if arg == "-f" || arg == "--file" {
-			i++ // skip the script file path
+			if i+1 < len(args) {
+				i++
+				content, err := os.ReadFile(args[i])
+				if err != nil {
+					return true, fmt.Sprintf("cannot read sed script file %q for validation", args[i])
+				}
+				if hasDangerousSedPattern(string(content)) {
+					return true, "sed script file contains dangerous 'e' command that executes shell commands"
+				}
+			}
 			continue
 		}
 

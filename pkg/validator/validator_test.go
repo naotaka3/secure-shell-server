@@ -395,6 +395,66 @@ func TestValidateCommandWithDenyFlags(t *testing.T) {
 	}
 }
 
+// TestDenyFlagsCombinedShortFlags tests that combined short flags like -fv are detected.
+func TestDenyFlagsCombinedShortFlags(t *testing.T) {
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories: []string{"/home", "/tmp"},
+		AllowCommands: []config.AllowCommand{
+			{
+				Command: "git",
+				SubCommands: []config.SubCommandRule{
+					{
+						Name:      "push",
+						DenyFlags: []string{"-f", "--force", "--force-with-lease"},
+					},
+					{
+						Name:      "branch",
+						DenyFlags: []string{"-D"},
+					},
+				},
+			},
+		},
+		DefaultErrorMessage: "Command not allowed",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	tests := []struct {
+		name    string
+		cmd     string
+		args    []string
+		allowed bool
+	}{
+		// Combined short flag containing denied flag
+		{name: "CombinedFlagContainingDenied_fv", cmd: "git", args: []string{"push", "-fv"}, allowed: false},
+		{name: "CombinedFlagContainingDenied_vf", cmd: "git", args: []string{"push", "-vf"}, allowed: false},
+		{name: "CombinedFlagWithoutDenied_va", cmd: "git", args: []string{"push", "-va"}, allowed: true},
+		// Exact match still works
+		{name: "ExactDenyFlag_f", cmd: "git", args: []string{"push", "-f"}, allowed: false},
+		{name: "ExactDenyFlag_force", cmd: "git", args: []string{"push", "--force"}, allowed: false},
+		// --flag=value format
+		{name: "FlagEqualsValue_force", cmd: "git", args: []string{"push", "--force=true"}, allowed: false},
+		{name: "FlagEqualsValue_forceWithLease", cmd: "git", args: []string{"push", "--force-with-lease=origin/main"}, allowed: false},
+		// Should NOT match partial long flag names
+		{name: "PartialLongFlagNotMatched", cmd: "git", args: []string{"push", "--forced"}, allowed: true},
+		// Multi-char short denied flag (-D) should only exact match, not expand
+		{name: "MultiCharDenyFlagExact", cmd: "git", args: []string{"branch", "-D"}, allowed: false},
+		{name: "MultiCharDenyFlagNotExpanded", cmd: "git", args: []string{"branch", "-Da"}, allowed: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logBuffer.Reset()
+			gotAllowed, _ := v.ValidateCommand(tt.cmd, tt.args, "/home")
+			if gotAllowed != tt.allowed {
+				t.Errorf("ValidateCommand(%s %v) allowed = %v, want %v", tt.cmd, tt.args, gotAllowed, tt.allowed)
+			}
+		})
+	}
+}
+
 // TestCommandLogging tests the command logging functionality.
 func TestCommandLogging(t *testing.T) {
 	// Create temporary directories for testing
@@ -494,6 +554,167 @@ func TestLogBlockedCommandError(t *testing.T) {
 // Helper to generate a unique temp directory suffix.
 func tempDirSuffix() string {
 	return filepath.Base(os.TempDir()) + "-" + filepath.Base(filepath.Join("validator", "test"))
+}
+
+// TestSymlinkDirectoryEscape tests that symlinks pointing outside allowed directories are rejected.
+func TestSymlinkDirectoryEscape(t *testing.T) {
+	// Create allowed directory and a target directory outside of it
+	allowedDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	// Create a file in the outside directory
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("Failed to create outside file: %v", err)
+	}
+
+	// Create a symlink inside the allowed directory pointing to the outside directory
+	symlinkPath := filepath.Join(allowedDir, "escape_link")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories:  []string{allowedDir},
+		DefaultErrorMessage: "Path not allowed",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	tests := []struct {
+		name    string
+		path    string
+		baseDir string
+		allowed bool
+	}{
+		{
+			name:    "SymlinkToOutsideDir",
+			path:    symlinkPath,
+			baseDir: allowedDir,
+			allowed: false, // symlink resolves to outsideDir which is not allowed
+		},
+		{
+			name:    "FileViaSymlinkToOutsideDir",
+			path:    filepath.Join(symlinkPath, "secret.txt"),
+			baseDir: allowedDir,
+			allowed: false, // resolves to outsideDir/secret.txt
+		},
+		{
+			name:    "DirectPathToOutsideDir",
+			path:    outsideDir,
+			baseDir: allowedDir,
+			allowed: false,
+		},
+		{
+			name:    "DirectPathInsideAllowed",
+			path:    filepath.Join(allowedDir, "normal.txt"),
+			baseDir: allowedDir,
+			allowed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotAllowed, _ := v.IsPathInAllowedDirectory(tt.path, tt.baseDir)
+			if gotAllowed != tt.allowed {
+				t.Errorf("IsPathInAllowedDirectory(%q) allowed = %v, want %v", tt.path, gotAllowed, tt.allowed)
+			}
+		})
+	}
+}
+
+// TestSymlinkInAllowedDirectoryConfig tests symlink resolution in the allowed directory list itself.
+func TestSymlinkInAllowedDirectoryConfig(t *testing.T) {
+	// Create real target directory
+	realDir := t.TempDir()
+
+	// Create a symlink that will be used as an allowed directory
+	symlinkDir := filepath.Join(t.TempDir(), "linked_allowed")
+	if err := os.Symlink(realDir, symlinkDir); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories:  []string{symlinkDir},
+		DefaultErrorMessage: "Path not allowed",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	// A file in the real directory should be allowed since the symlink points to it
+	allowed, _ := v.IsPathInAllowedDirectory(filepath.Join(realDir, "file.txt"), realDir)
+	if !allowed {
+		t.Error("File in real directory should be allowed when allowed dir is a symlink pointing to it")
+	}
+}
+
+// TestIsDirectoryAllowedWithSymlink tests IsDirectoryAllowed with symlinked directories.
+func TestIsDirectoryAllowedWithSymlink(t *testing.T) {
+	allowedDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	// Create a symlink inside allowed dir pointing outside
+	symlinkPath := filepath.Join(allowedDir, "escape")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories:  []string{allowedDir},
+		DefaultErrorMessage: "Not allowed",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	// The symlink path resolves to outsideDir — should be denied
+	allowed, _ := v.IsDirectoryAllowed(symlinkPath)
+	if allowed {
+		t.Error("IsDirectoryAllowed() should deny symlink that resolves outside allowed directories")
+	}
+
+	// The real allowed dir should still be allowed
+	allowed, _ = v.IsDirectoryAllowed(allowedDir)
+	if !allowed {
+		t.Error("IsDirectoryAllowed() should allow the real allowed directory")
+	}
+}
+
+// TestMultiLevelSymlink tests that chained symlinks are fully resolved.
+func TestMultiLevelSymlink(t *testing.T) {
+	allowedDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	// Create chain: allowedDir/link1 -> allowedDir/link2 -> outsideDir
+	intermediateLink := filepath.Join(allowedDir, "link2")
+	if err := os.Symlink(outsideDir, intermediateLink); err != nil {
+		t.Fatalf("Failed to create intermediate symlink: %v", err)
+	}
+
+	topLink := filepath.Join(allowedDir, "link1")
+	if err := os.Symlink(intermediateLink, topLink); err != nil {
+		t.Fatalf("Failed to create top-level symlink: %v", err)
+	}
+
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories:  []string{allowedDir},
+		DefaultErrorMessage: "Not allowed",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	// Multi-level symlink should resolve to outsideDir — denied
+	allowed, _ := v.IsPathInAllowedDirectory(filepath.Join(topLink, "file.txt"), allowedDir)
+	if allowed {
+		t.Error("Multi-level symlink resolving outside should be denied")
+	}
 }
 
 // TestNoLogPathSet tests that no logging occurs when BlockLogPath is empty.
