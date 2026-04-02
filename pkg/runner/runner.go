@@ -133,7 +133,13 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 
 	callFunc := func(_ context.Context, args []string) ([]string, error) {
 		cmd := args[0]
-		allowed, errMsg := r.validator.ValidateCommand(cmd, args[1:], absWorkingDir)
+		// Normalize absolute path commands to basename for validation
+		// e.g., /usr/bin/rm → rm, so deny/allow rules match correctly
+		cmdForValidation := cmd
+		if filepath.IsAbs(cmd) {
+			cmdForValidation = filepath.Base(cmd)
+		}
+		allowed, errMsg := r.validator.ValidateCommand(cmdForValidation, args[1:], absWorkingDir)
 		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
@@ -152,6 +158,13 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
 			return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
 		}
+
+		// Resolve symlinks to prevent directory escape via symlinks
+		resolvedPath, resolveErr := filepath.EvalSymlinks(absPath)
+		if resolveErr == nil {
+			absPath = resolvedPath
+		}
+		// If EvalSymlinks fails (file doesn't exist yet), use the original absPath
 
 		// Check if file is in an allowed directory
 		// First check if the file's directory is allowed
