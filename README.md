@@ -15,6 +15,8 @@ While this server implements multiple security measures, it cannot guarantee com
 
 - **Command Allowlisting**: Parses user-provided shell scripts and validates that only allowed commands are used.
 - **Secure Execution**: Uses a custom runner to enforce the allowlist during command execution.
+- **Subcommand Validation**: Supports recursive subcommand rules with fine-grained control over allowed subcommands.
+- **Flag Denial**: Blocks dangerous flags on commands and subcommands at any nesting level (e.g., preventing `git push --force`).
 - **Directory Restrictions**: Limits file system access to only explicitly allowed directories.
 - **Path Validation**: Verifies all path arguments to prevent access to unauthorized directories.
 - **Timeout Enforcement**: Automatically terminates long-running commands to prevent resource exhaustion.
@@ -67,6 +69,107 @@ To use secure-shell-server with Claude Desktop:
 3. Create a configuration file at a location of your choice (such as `~/.mcp_shell_config.json` on macOS or appropriate path on Windows) with your desired settings
 4. Restart Claude Desktop to apply the changes
 
+## Configuration
+
+The security policy is defined in a JSON configuration file. This section explains the key configuration options, particularly the subcommand and flag denial features.
+
+### Basic Structure
+
+```json
+{
+  "allowedDirectories": ["/home", "/tmp"],
+  "allowCommands": [...],
+  "denyCommands": [...],
+  "defaultErrorMessage": "Command not allowed",
+  "maxExecutionTime": 30,
+  "maxOutputSize": 51200
+}
+```
+
+### Subcommand Validation
+
+Commands can specify allowed subcommands. Each subcommand can be:
+- A simple string (bare subcommand name)
+- A full object with additional restrictions
+
+**Simple subcommand:**
+```json
+{
+  "command": "git",
+  "subCommands": ["status", "pull", "fetch"]
+}
+```
+
+### Flag Denial (denyFlags)
+
+You can deny specific flags on commands and subcommands at any nesting level. This is useful for preventing dangerous operations like force-push or force-recreate.
+
+**Example: Deny dangerous flags on git push**
+```json
+{
+  "command": "git",
+  "subCommands": [
+    {
+      "name": "push",
+      "denyFlags": ["-f", "--force", "--force-with-lease"],
+      "message": "Force push is not allowed"
+    }
+  ]
+}
+```
+
+When a user runs `git push -f`, the command will be blocked with the custom message.
+
+### Recursive Subcommands
+
+Subcommands can be nested to arbitrary depth, each with its own `denyFlags`. This allows fine-grained control over deeply nested command structures.
+
+**Example: Recursive Docker Compose validation**
+```json
+{
+  "command": "docker",
+  "subCommands": [
+    "ps",
+    "logs",
+    {
+      "name": "compose",
+      "subCommands": [
+        {
+          "name": "up",
+          "denyFlags": ["--force-recreate"],
+          "message": "Force recreate is not allowed"
+        },
+        "down",
+        "logs"
+      ]
+    }
+  ]
+}
+```
+
+This configuration allows `docker compose up` but blocks `docker compose up --force-recreate`.
+
+### Deny Subcommands
+
+You can also explicitly deny specific subcommands using `denySubCommands`:
+
+```json
+{
+  "command": "git",
+  "subCommands": ["status", "pull", "push"],
+  "denySubCommands": ["reset", "revert"]
+}
+```
+
+### Complete Configuration Example
+
+See `sample-config.json` for a comprehensive example covering:
+- Simple allowed commands
+- Commands with subcommand restrictions
+- Subcommands with `denyFlags`
+- Nested subcommands (e.g., `docker compose`)
+- Explicit denied commands with custom messages
+
 ## Design and Implementation
 
 The Secure Shell Server follows a modular design with the following components:
@@ -85,12 +188,17 @@ The Secure Shell Server follows a modular design with the following components:
 - Scripts are validated before execution to prevent dangerous operations.
 - Special handling for commands like `find` and `xargs` that could execute other commands.
 - Path arguments are validated to prevent access to restricted areas.
+- Dangerous flags can be blocked at any subcommand level using `denyFlags`.
 
 ### Limitations
 
 - Cannot prevent all sophisticated attacks or command chaining techniques.
 - Command injection may still be possible in certain edge cases.
 - Security effectiveness depends heavily on proper configuration.
+- **Flag Matching**: Flag denial uses exact matching only:
+  - Combined short flags (e.g., `-fv` containing `-f`) are not detected
+  - `--flag=value` format requires exact match on the flag name part
+  - Consider these patterns when designing your policy
 
 ## Development
 

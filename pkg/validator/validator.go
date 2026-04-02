@@ -181,35 +181,67 @@ func (v *CommandValidator) isCommandExplicitlyDenied(cmd string) (bool, string) 
 }
 
 // checkSubCommandPermissions checks if the subcommand is allowed for the specified command.
+// It delegates to the recursive checkSubCommandRule for the top-level AllowCommand.
 func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string, allowed config.AllowCommand) (bool, string) {
-	// If there are subcommands specified, check if the first argument matches any of them
-	if len(allowed.SubCommands) > 0 && len(args) > 0 {
-		subCommandAllowed := false
-		for _, subCmd := range allowed.SubCommands {
-			if args[0] == subCmd {
-				subCommandAllowed = true
-				break
-			}
-		}
+	// Convert top-level AllowCommand into a SubCommandRule-compatible check
+	return v.checkSubCommandRule(cmd, args, allowed.SubCommands, allowed.DenySubCommands, nil, "")
+}
 
-		if !subCommandAllowed {
-			deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
-			v.logBlockedCommand(cmd, args, deniedMessage)
+// checkSubCommandRule recursively validates args against a SubCommandRule tree.
+// cmdPath is the command path so far (e.g. "git" or "docker compose") for error messages.
+// subCommands is the list of allowed sub-command rules at this level.
+// denySubCommands is the list of denied sub-commands at this level.
+// denyFlags is the list of denied flags at this level.
+// message is a custom error message for denied flags at this level.
+func (v *CommandValidator) checkSubCommandRule(cmdPath string, args []string, subCommands []config.SubCommandRule, denySubCommands []string, denyFlags []string, message string) (bool, string) {
+	// If no more args, nothing to deny
+	if len(args) == 0 {
+		return true, ""
+	}
+
+	// Check denied subcommands at this level
+	for _, denied := range denySubCommands {
+		if args[0] == denied {
+			deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmdPath)
+			v.logBlockedCommand(cmdPath, args, deniedMessage)
 			return false, deniedMessage
 		}
 	}
 
-	// If there are denied subcommands specified, check if the first argument matches any of them
-	if len(allowed.DenySubCommands) > 0 && len(args) > 0 {
-		for _, deniedSubCmd := range allowed.DenySubCommands {
-			if args[0] == deniedSubCmd {
-				deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
-				v.logBlockedCommand(cmd, args, deniedMessage)
+	// If there are subcommand rules, try to match args[0] against them
+	if len(subCommands) > 0 {
+		for _, rule := range subCommands {
+			if rule.Name == args[0] {
+				// Found a matching rule — recurse into it
+				nextPath := cmdPath + " " + args[0]
+				return v.checkSubCommandRule(nextPath, args[1:], rule.SubCommands, rule.DenySubCommands, rule.DenyFlags, rule.Message)
+			}
+		}
+
+		// args[0] not found in allowed subcommands (allowlist mode) — deny
+		deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmdPath)
+		v.logBlockedCommand(cmdPath, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// No subcommand rules at this level — check denyFlags against all remaining args
+	return v.checkDenyFlags(cmdPath, args, denyFlags, message)
+}
+
+// checkDenyFlags scans args for any flag in denyFlags.
+func (v *CommandValidator) checkDenyFlags(cmdPath string, args []string, denyFlags []string, message string) (bool, string) {
+	for _, arg := range args {
+		for _, denied := range denyFlags {
+			if arg == denied {
+				deniedMessage := fmt.Sprintf("flag %q is not allowed for command %q", arg, cmdPath)
+				if message != "" {
+					deniedMessage += ": " + message
+				}
+				v.logBlockedCommand(cmdPath, args, deniedMessage)
 				return false, deniedMessage
 			}
 		}
 	}
-
 	return true, ""
 }
 

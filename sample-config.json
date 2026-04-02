@@ -10,12 +10,45 @@
     "tail",
     {
       "command": "git",
-      "subCommands": ["status", "pull", "fetch", "log", "diff"],
-      "denySubCommands": ["push", "commit"]
+      "subCommands": [
+        "status",
+        "pull",
+        "fetch",
+        "log",
+        "diff",
+        {
+          "name": "push",
+          "denyFlags": ["-f", "--force", "--force-with-lease"],
+          "message": "Force push is not allowed"
+        },
+        {
+          "name": "branch",
+          "denyFlags": ["-D"],
+          "message": "Force branch deletion is not allowed, use -d instead"
+        }
+      ],
+      "denySubCommands": ["reset --hard"]
     },
     {
       "command": "docker",
-      "subCommands": ["ps", "logs", "info", "inspect"]
+      "subCommands": [
+        "ps",
+        "logs",
+        "info",
+        "inspect",
+        {
+          "name": "compose",
+          "subCommands": [
+            {
+              "name": "up",
+              "denyFlags": ["--force-recreate"]
+            },
+            "down",
+            "logs",
+            "ps"
+          ]
+        }
+      ]
     }
   ],
   "denyCommands": [

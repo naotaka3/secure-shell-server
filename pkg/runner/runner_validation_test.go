@@ -20,7 +20,7 @@ func setupCustomConfig() *config.ShellCommandConfig {
 			{Command: "echo"},
 			{Command: "grep"},
 			{Command: "find"},
-			{Command: "git", SubCommands: []string{"status", "log", "diff"}, DenySubCommands: []string{"push", "commit"}},
+			{Command: "git", SubCommands: []config.SubCommandRule{{Name: "status"}, {Name: "log"}, {Name: "diff"}}, DenySubCommands: []string{"push", "commit"}},
 		},
 		DenyCommands: []config.DenyCommand{
 			{Command: "rm", Message: "Remove command is not allowed"},
