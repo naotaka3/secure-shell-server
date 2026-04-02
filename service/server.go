@@ -24,11 +24,11 @@ import (
 func createRunTool() mcp.Tool {
 	return mcp.NewTool("run",
 		mcp.WithDescription("Run one or more shell commands in the current working directory.\n"+
-			"Use change_directory to set the working directory before running commands.\n"+
+			"IMPORTANT: The working directory must be set with the MCP cd tool beforehand. Do NOT use the shell cd command inside commands.\n"+
 			"Multiple commands can be executed in parallel (default) or serial mode."),
 		mcp.WithArray("commands",
 			mcp.Required(),
-			mcp.Description("List of commands to execute"),
+			mcp.Description("List of commands to execute. Do not include cd in commands; use the MCP cd tool instead."),
 			mcp.Items(map[string]interface{}{"type": "string"}),
 		),
 		mcp.WithString("mode",
@@ -38,15 +38,21 @@ func createRunTool() mcp.Tool {
 	)
 }
 
-// createChangeDirectoryTool creates the change_directory tool for setting the working directory.
-func createChangeDirectoryTool() mcp.Tool {
-	return mcp.NewTool("change_directory",
-		mcp.WithDescription("Set the working directory for subsequent commands.\n"+
-			"Must be called before running any commands. The directory must be within allowed paths."),
-		mcp.WithString("directory",
+// createCdTool creates the cd tool for setting the working directory.
+func createCdTool() mcp.Tool {
+	return mcp.NewTool("cd",
+		mcp.WithDescription("Set the working directory for subsequent run commands.\n"+
+			"MUST be called before the first run call. The directory must be within allowed paths."),
+		mcp.WithString("path",
 			mcp.Required(),
-			mcp.Description("The directory to set as the working directory."),
 		),
+	)
+}
+
+// createPwdTool creates the pwd tool for displaying the current working directory.
+func createPwdTool() mcp.Tool {
+	return mcp.NewTool("pwd",
+		mcp.WithDescription("Print the current working directory."),
 	)
 }
 
@@ -96,7 +102,8 @@ func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Serve
 func (s *Server) Start() error {
 	// Register tools
 	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
-	s.mcpServer.AddTool(createChangeDirectoryTool(), s.HandleChangeDirectory)
+	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server
 	address := fmt.Sprintf(":%d", s.port)
@@ -129,9 +136,22 @@ func (s *Server) Start() error {
 	return server.ListenAndServe()
 }
 
-// HandleChangeDirectory handles the change_directory tool execution.
-func (s *Server) HandleChangeDirectory(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	directory, ok := request.Params.Arguments["directory"].(string)
+// HandlePwd handles the pwd tool execution.
+func (s *Server) HandlePwd(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.cmdMutex.Lock()
+	workingDir := s.workingDir
+	s.cmdMutex.Unlock()
+
+	if workingDir == "" {
+		return mcp.NewToolResultError("No working directory set. Use the \"cd\" tool to set a working directory first."), nil
+	}
+
+	return mcp.NewToolResultText(workingDir), nil
+}
+
+// HandleCd handles the cd tool execution.
+func (s *Server) HandleCd(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	directory, ok := request.Params.Arguments["path"].(string)
 	if !ok || directory == "" {
 		return mcp.NewToolResultError("Directory parameter must be a non-empty string"), nil
 	}
@@ -188,7 +208,7 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 	s.cmdMutex.Unlock()
 
 	if workingDir == "" {
-		return mcp.NewToolResultError("No working directory set. Use change_directory to set a working directory first."), nil
+		return mcp.NewToolResultError("No working directory set. Use the \"cd\" tool to set a working directory first."), nil
 	}
 
 	var results []commandResult
@@ -290,7 +310,8 @@ func formatResults(results []commandResult) *mcp.CallToolResult {
 func (s *Server) ServeStdio() error {
 	// Register tools
 	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
-	s.mcpServer.AddTool(createChangeDirectoryTool(), s.HandleChangeDirectory)
+	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server using stdio
 	s.logger.LogInfof("Starting MCP server using stdin/stdout")

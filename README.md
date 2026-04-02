@@ -71,32 +71,38 @@ To use secure-shell-server with Claude Desktop:
 
 ## MCP Tools
 
-The server exposes two MCP tools:
+The server exposes three MCP tools:
 
-### `change_directory`
+### `cd`
 
-Set the working directory for subsequent commands. Must be called before running any commands. The directory must be within the configured `allowedDirectories`.
+Set the working directory for subsequent commands. **This tool MUST be called before using `run`.** The directory must be within the configured `allowedDirectories`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `directory` | Yes | The directory to set as the working directory |
+| `path` | Yes | The directory to set as the working directory |
 
 ### `run`
 
-Run a shell command in the current working directory (set via `change_directory`). Only allowed commands within allowed paths are permitted.
+Run one or more shell commands in the current working directory (set via `cd`). Only allowed commands within allowed paths are permitted. **You must call `cd` first to set the working directory.**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `command` | Yes | Command to execute |
+| `commands` | Yes | List of commands to execute |
+| `mode` | No | `"parallel"` (default) or `"serial"` |
+
+### `pwd`
+
+Print the current working directory previously set by `cd`.
 
 ### Usage Flow
 
 ```
-1. change_directory(directory: "/home/user/project")  -> Set working directory
-2. run(command: "ls -la")                              -> Execute command
-3. run(command: "echo hello")                          -> Directory persists
-4. change_directory(directory: "/tmp")                  -> Change directory
-5. run(command: "pwd")                                 -> Now in /tmp
+1. cd(path: "/home/user/project")                      -> Set working directory (REQUIRED FIRST STEP)
+2. run(commands: ["ls -la"])                            -> Execute command
+3. run(commands: ["echo hello"])                        -> Directory persists
+4. pwd()                                               -> Check current directory
+5. cd(path: "/tmp")                                    -> Change directory
+6. run(commands: ["pwd"])                               -> Now in /tmp
 ```
 
 ## Configuration
