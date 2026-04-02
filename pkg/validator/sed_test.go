@@ -1,6 +1,8 @@
 package validator
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -39,6 +41,13 @@ func TestValidateSedArgs(t *testing.T) {
 
 // testSafeSedPatterns tests sed scripts that should be allowed.
 func testSafeSedPatterns(t *testing.T, v *SedValidator) {
+	// Create a safe script file for -f flag test
+	tmpDir := t.TempDir()
+	safeScript := filepath.Join(tmpDir, "safe.sed")
+	if err := os.WriteFile(safeScript, []byte("s/foo/bar/g\n"), 0o644); err != nil {
+		t.Fatalf("Failed to create safe sed script: %v", err)
+	}
+
 	tests := []struct {
 		name string
 		args []string
@@ -85,7 +94,7 @@ func testSafeSedPatterns(t *testing.T, v *SedValidator) {
 		},
 		{
 			name: "WithFileFlag",
-			args: []string{"-f", "script.sed", "input.txt"},
+			args: []string{"-f", safeScript, "input.txt"},
 		},
 	}
 

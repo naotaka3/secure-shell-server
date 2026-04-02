@@ -81,6 +81,14 @@ func testSafeAwkPatterns(t *testing.T, v *AwkValidator) {
 			name: "PipeLiteralWithoutQuotes",
 			args: []string{"{gsub(/|/, \"-\"); print}"},
 		},
+		{
+			name: "GetlineFromStdin",
+			args: []string{`{getline; print}`},
+		},
+		{
+			name: "GetlineVarFromStdin",
+			args: []string{`{getline var; print var}`},
+		},
 	}
 
 	for _, tt := range tests {
@@ -150,6 +158,22 @@ func testDangerousAwkPatterns(t *testing.T, v *AwkValidator) {
 		{
 			name: "GetlineWithoutSpace",
 			args: []string{`{"date"|getline d; print d}`},
+		},
+		{
+			name: "GetlineFromFile",
+			args: []string{`{getline < "/etc/passwd"; print}`},
+		},
+		{
+			name: "GetlineVarFromFile",
+			args: []string{`{getline line < "/etc/passwd"; print line}`},
+		},
+		{
+			name: "GetlineFromFileInWhileLoop",
+			args: []string{`{while ((getline line < "file") > 0) print line}`},
+		},
+		{
+			name: "GetlineFromFileViaSourceFlag",
+			args: []string{"-e", `{getline < "/etc/shadow"}`},
 		},
 	}
 
