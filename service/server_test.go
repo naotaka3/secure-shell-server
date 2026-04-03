@@ -276,6 +276,104 @@ func TestRunCommandMultiple(t *testing.T) {
 	})
 }
 
+func TestUseEnvPwd(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := t.Context()
+
+	t.Run("working directory set from PWD when useEnvPwd is true", func(t *testing.T) {
+		t.Setenv("PWD", tmpDir)
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           true,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return the directory without needing cd
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, tmpDir)
+
+		// run should work without needing cd
+		result, err = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"echo hello"},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, "hello")
+	})
+
+	t.Run("PWD not in allowed directories is ignored", func(t *testing.T) {
+		t.Setenv("PWD", "/usr/local/not-allowed")
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           true,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return error since PWD was not in allowed dirs
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+
+	t.Run("useEnvPwd false does not set working directory", func(t *testing.T) {
+		t.Setenv("PWD", tmpDir)
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           false,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return error since useEnvPwd is false
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+}
+
 func assertToolError(t *testing.T, result *mcp.CallToolResult, contains string) {
 	t.Helper()
 	if !result.IsError {

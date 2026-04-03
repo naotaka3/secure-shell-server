@@ -21,11 +21,17 @@ import (
 )
 
 // createRunTool creates the run tool for executing shell commands.
-func createRunTool() mcp.Tool {
+func createRunTool(useEnvPwd bool) mcp.Tool {
+	desc := "Run one or more shell commands in the current working directory.\n"
+	if useEnvPwd {
+		desc += "The working directory defaults to the PWD environment variable. Use the MCP cd tool to change it if needed. Do NOT use the shell cd command inside commands.\n"
+	} else {
+		desc += "IMPORTANT: The working directory must be set with the MCP cd tool beforehand. Do NOT use the shell cd command inside commands.\n"
+	}
+	desc += "Multiple commands can be executed in parallel (default) or serial mode."
+
 	return mcp.NewTool("run",
-		mcp.WithDescription("Run one or more shell commands in the current working directory.\n"+
-			"IMPORTANT: The working directory must be set with the MCP cd tool beforehand. Do NOT use the shell cd command inside commands.\n"+
-			"Multiple commands can be executed in parallel (default) or serial mode."),
+		mcp.WithDescription(desc),
 		mcp.WithArray("commands",
 			mcp.Required(),
 			mcp.Description("List of commands to execute. Do not include cd in commands; use the MCP cd tool instead."),
@@ -39,10 +45,16 @@ func createRunTool() mcp.Tool {
 }
 
 // createCdTool creates the cd tool for setting the working directory.
-func createCdTool() mcp.Tool {
+func createCdTool(useEnvPwd bool) mcp.Tool {
+	desc := "Set the working directory for subsequent run commands.\n"
+	if useEnvPwd {
+		desc += "The working directory defaults to the PWD environment variable. Call this tool only if you need to change it."
+	} else {
+		desc += "MUST be called before the first run call. The directory must be within allowed paths."
+	}
+
 	return mcp.NewTool("cd",
-		mcp.WithDescription("Set the working directory for subsequent run commands.\n"+
-			"MUST be called before the first run call. The directory must be within allowed paths."),
+		mcp.WithDescription(desc),
 		mcp.WithString("path",
 			mcp.Required(),
 		),
@@ -88,21 +100,39 @@ func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Serve
 		server.WithRecovery(),
 	)
 
-	return &Server{
+	s := &Server{
 		config:    cfg,
 		validator: validatorObj,
 		runner:    runnerObj,
 		logger:    loggerObj,
 		mcpServer: mcpServer,
 		port:      port,
-	}, nil
+	}
+
+	// Initialize working directory from PWD environment variable if configured
+	if cfg.UseEnvPwd {
+		if pwd := os.Getenv("PWD"); pwd != "" {
+			absDir, err := filepath.Abs(pwd)
+			if err == nil {
+				if allowed, _ := validatorObj.IsDirectoryAllowed(absDir); allowed {
+					info, statErr := os.Stat(absDir)
+					if statErr == nil && info.IsDir() {
+						s.workingDir = absDir
+						loggerObj.LogInfof("Default working directory set from PWD: %s", absDir)
+					}
+				}
+			}
+		}
+	}
+
+	return s, nil
 }
 
 // Start initializes and starts the MCP server.
 func (s *Server) Start() error {
 	// Register tools
-	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
-	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createRunTool(s.config.UseEnvPwd), s.HandleRunCommand)
+	s.mcpServer.AddTool(createCdTool(s.config.UseEnvPwd), s.HandleCd)
 	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server
@@ -309,8 +339,8 @@ func formatResults(results []commandResult) *mcp.CallToolResult {
 // ServeStdio starts an MCP server using stdin/stdout for communication.
 func (s *Server) ServeStdio() error {
 	// Register tools
-	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
-	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createRunTool(s.config.UseEnvPwd), s.HandleRunCommand)
+	s.mcpServer.AddTool(createCdTool(s.config.UseEnvPwd), s.HandleCd)
 	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server using stdio

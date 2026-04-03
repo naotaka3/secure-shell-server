@@ -66,6 +66,8 @@ type ShellCommandConfig struct {
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
 	// MaxOutputSize is the maximum size of command output in bytes
 	MaxOutputSize int `json:"maxOutputSize,omitempty"`
+	// UseEnvPwd uses the PWD environment variable as the default working directory when true
+	UseEnvPwd bool `json:"useEnvPwd,omitempty"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for ShellCommandConfig.
@@ -78,6 +80,7 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 		BlockLogPath        string          `json:"blockLogPath,omitempty"`
 		MaxExecutionTime    int             `json:"maxExecutionTime,omitempty"`
 		MaxOutputSize       int             `json:"maxOutputSize,omitempty"`
+		UseEnvPwd           *bool           `json:"useEnvPwd,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -109,6 +112,13 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 
 	c.BlockLogPath = raw.BlockLogPath
 
+	// UseEnvPwd defaults to true unless explicitly set to false
+	if raw.UseEnvPwd != nil {
+		c.UseEnvPwd = *raw.UseEnvPwd
+	} else {
+		c.UseEnvPwd = true
+	}
+
 	// Use default execution time if not specified or invalid
 	if raw.MaxExecutionTime > 0 {
 		c.MaxExecutionTime = raw.MaxExecutionTime
@@ -139,6 +149,7 @@ func NewDefaultConfig() *ShellCommandConfig {
 		DefaultErrorMessage: "Command not allowed by security policy",
 		MaxExecutionTime:    DefaultExecutionTimeout,
 		MaxOutputSize:       DefaultMaxOutputSize,
+		UseEnvPwd:           true,
 	}
 }
 

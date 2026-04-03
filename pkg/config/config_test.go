@@ -218,6 +218,61 @@ func TestAllowCommandWithDenyFlags(t *testing.T) {
 	}
 }
 
+func TestUseEnvPwdConfig(t *testing.T) {
+	t.Run("useEnvPwd true", func(t *testing.T) {
+		const configJSON = `{
+			"allowedDirectories": ["/home"],
+			"allowCommands": ["ls"],
+			"denyCommands": [],
+			"defaultErrorMessage": "Not allowed",
+			"useEnvPwd": true
+		}`
+
+		var cfg ShellCommandConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+			t.Fatalf("Failed to unmarshal: %v", err)
+		}
+		if !cfg.UseEnvPwd {
+			t.Error("UseEnvPwd should be true")
+		}
+	})
+
+	t.Run("useEnvPwd defaults to true", func(t *testing.T) {
+		const configJSON = `{
+			"allowedDirectories": ["/home"],
+			"allowCommands": ["ls"],
+			"denyCommands": [],
+			"defaultErrorMessage": "Not allowed"
+		}`
+
+		var cfg ShellCommandConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+			t.Fatalf("Failed to unmarshal: %v", err)
+		}
+		if !cfg.UseEnvPwd {
+			t.Error("UseEnvPwd should default to true")
+		}
+	})
+
+	t.Run("useEnvPwd explicit false", func(t *testing.T) {
+		const configJSON = `{
+			"allowedDirectories": ["/home"],
+			"allowCommands": ["ls"],
+			"denyCommands": [],
+			"defaultErrorMessage": "Not allowed",
+			"useEnvPwd": false
+		}`
+
+		var cfg ShellCommandConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+			t.Fatalf("Failed to unmarshal: %v", err)
+		}
+		if cfg.UseEnvPwd {
+			t.Error("UseEnvPwd should be false when explicitly set")
+		}
+	})
+}
+
 func TestMixedCommandFormats(t *testing.T) {
 	const configJSON = `{
 		"allowedDirectories": ["/home", "/tmp"],
