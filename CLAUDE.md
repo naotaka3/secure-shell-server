@@ -70,5 +70,5 @@ See `sample-config.json` for the full format. Key fields:
 - `allowedDirectories` — Directories where commands can operate
 - `allowCommands` — Allowlist (strings or objects with subCommands/denyFlags)
 - `denyCommands` — Explicit deny with custom messages
-- `maxExecutionTime` — Timeout in seconds (default: 30)
+- `maxExecutionTime` — Timeout in seconds (default: 120)
 - `maxOutputSize` — Output limit in bytes (default: 51200)

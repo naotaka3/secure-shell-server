@@ -7,7 +7,7 @@ import (
 )
 
 // Default execution timeout in seconds.
-const DefaultExecutionTimeout = 30
+const DefaultExecutionTimeout = 120
 
 // Default max output size in bytes (50KB).
 const DefaultMaxOutputSize = 50 * 1024
@@ -62,9 +62,9 @@ type ShellCommandConfig struct {
 	DenyCommands        []DenyCommand  `json:"denyCommands"`
 	DefaultErrorMessage string         `json:"defaultErrorMessage"`
 	BlockLogPath        string         `json:"blockLogPath,omitempty"`
-	// MaxExecutionTime is the maximum execution time in seconds
+	// MaxExecutionTime is the maximum execution time in seconds (0 means unlimited)
 	MaxExecutionTime int `json:"maxExecutionTime,omitempty"`
-	// MaxOutputSize is the maximum size of command output in bytes
+	// MaxOutputSize is the maximum size of command output in bytes (0 means unlimited)
 	MaxOutputSize int `json:"maxOutputSize,omitempty"`
 	// UseEnvPwd uses the PWD environment variable as the default working directory when true
 	UseEnvPwd bool `json:"useEnvPwd,omitempty"`
@@ -78,8 +78,8 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 		DenyCommands        json.RawMessage `json:"denyCommands"`
 		DefaultErrorMessage string          `json:"defaultErrorMessage"`
 		BlockLogPath        string          `json:"blockLogPath,omitempty"`
-		MaxExecutionTime    int             `json:"maxExecutionTime,omitempty"`
-		MaxOutputSize       int             `json:"maxOutputSize,omitempty"`
+		MaxExecutionTime    *int            `json:"maxExecutionTime"`
+		MaxOutputSize       *int            `json:"maxOutputSize"`
 		UseEnvPwd           *bool           `json:"useEnvPwd,omitempty"`
 	}
 
@@ -119,16 +119,16 @@ func (c *ShellCommandConfig) UnmarshalJSON(data []byte) error {
 		c.UseEnvPwd = true
 	}
 
-	// Use default execution time if not specified or invalid
-	if raw.MaxExecutionTime > 0 {
-		c.MaxExecutionTime = raw.MaxExecutionTime
+	// Use default execution time if not specified; 0 means unlimited
+	if raw.MaxExecutionTime != nil {
+		c.MaxExecutionTime = *raw.MaxExecutionTime
 	} else {
 		c.MaxExecutionTime = DefaultExecutionTimeout
 	}
 
-	// Use default output size if not specified or invalid
-	if raw.MaxOutputSize > 0 {
-		c.MaxOutputSize = raw.MaxOutputSize
+	// Use default output size if not specified; 0 means unlimited
+	if raw.MaxOutputSize != nil {
+		c.MaxOutputSize = *raw.MaxOutputSize
 	} else {
 		c.MaxOutputSize = DefaultMaxOutputSize
 	}

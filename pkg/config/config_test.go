@@ -25,8 +25,8 @@ func TestNewDefaultConfig(t *testing.T) {
 	}
 
 	// Verify default execution time
-	if cfg.MaxExecutionTime != 30 {
-		t.Errorf("MaxExecutionTime = %d, want %d", cfg.MaxExecutionTime, 30)
+	if cfg.MaxExecutionTime != 120 {
+		t.Errorf("MaxExecutionTime = %d, want %d", cfg.MaxExecutionTime, 120)
 	}
 }
 
@@ -335,5 +335,47 @@ func TestMixedCommandFormats(t *testing.T) {
 	}
 	if config.DenyCommands[1].Message != "Elevated privileges not allowed" {
 		t.Errorf("Expected specific message for 'sudo', got %q", config.DenyCommands[1].Message)
+	}
+}
+
+func TestUnmarshalZeroMeansUnlimited(t *testing.T) {
+	configJSON := `{
+		"allowedDirectories": ["/tmp"],
+		"allowCommands": ["ls"],
+		"denyCommands": [],
+		"maxExecutionTime": 0,
+		"maxOutputSize": 0
+	}`
+
+	var cfg ShellCommandConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		t.Fatalf("Failed to unmarshal config: %v", err)
+	}
+
+	if cfg.MaxExecutionTime != 0 {
+		t.Errorf("MaxExecutionTime = %d, want 0 (unlimited)", cfg.MaxExecutionTime)
+	}
+	if cfg.MaxOutputSize != 0 {
+		t.Errorf("MaxOutputSize = %d, want 0 (unlimited)", cfg.MaxOutputSize)
+	}
+}
+
+func TestUnmarshalOmittedUsesDefaults(t *testing.T) {
+	configJSON := `{
+		"allowedDirectories": ["/tmp"],
+		"allowCommands": ["ls"],
+		"denyCommands": []
+	}`
+
+	var cfg ShellCommandConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		t.Fatalf("Failed to unmarshal config: %v", err)
+	}
+
+	if cfg.MaxExecutionTime != DefaultExecutionTimeout {
+		t.Errorf("MaxExecutionTime = %d, want %d", cfg.MaxExecutionTime, DefaultExecutionTimeout)
+	}
+	if cfg.MaxOutputSize != DefaultMaxOutputSize {
+		t.Errorf("MaxOutputSize = %d, want %d", cfg.MaxOutputSize, DefaultMaxOutputSize)
 	}
 }

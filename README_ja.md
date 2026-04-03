@@ -117,10 +117,19 @@ Claude Desktop で secure-shell-server を使用するには：
   "allowCommands": [...],
   "denyCommands": [...],
   "defaultErrorMessage": "Command not allowed",
-  "maxExecutionTime": 30,
+  "maxExecutionTime": 120,
   "maxOutputSize": 51200
 }
 ```
+
+| フィールド | 説明 | デフォルト値 |
+|---|---|---|
+| `allowedDirectories` | コマンドが操作可能なディレクトリ | なし（必須） |
+| `allowCommands` | 許可コマンドのリスト | `[]` |
+| `denyCommands` | 拒否コマンドのリスト | `[]` |
+| `defaultErrorMessage` | 拒否時のデフォルトメッセージ | `""` |
+| `maxExecutionTime` | 最大実行時間（秒）。`0` で無制限 | `120` |
+| `maxOutputSize` | 最大出力サイズ（バイト）。`0` で無制限 | `51200` |
 
 ### サブコマンド検証
 

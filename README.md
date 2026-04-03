@@ -117,10 +117,19 @@ The security policy is defined in a JSON configuration file. This section explai
   "allowCommands": [...],
   "denyCommands": [...],
   "defaultErrorMessage": "Command not allowed",
-  "maxExecutionTime": 30,
+  "maxExecutionTime": 120,
   "maxOutputSize": 51200
 }
 ```
+
+| Field | Description | Default |
+|---|---|---|
+| `allowedDirectories` | Directories where commands can operate | None (required) |
+| `allowCommands` | List of allowed commands | `[]` |
+| `denyCommands` | List of denied commands | `[]` |
+| `defaultErrorMessage` | Default message when command is denied | `""` |
+| `maxExecutionTime` | Maximum execution time in seconds. `0` for unlimited | `120` |
+| `maxOutputSize` | Maximum output size in bytes. `0` for unlimited | `51200` |
 
 ### Subcommand Validation
 
