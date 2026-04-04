@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -161,47 +162,13 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		return args, nil
 	}
 
-	// Create a custom OpenHandler for security checks
-	openHandler := func(openCtx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
-		// Get absolute path of the file
-		absPath, absErr := filepath.Abs(path)
-		if absErr != nil {
-			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
-			return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
-		}
-
-		// Resolve symlinks to prevent directory escape via symlinks
-		resolvedPath, resolveErr := filepath.EvalSymlinks(absPath)
-		if resolveErr == nil {
-			absPath = resolvedPath
-		}
-		// If EvalSymlinks fails (file doesn't exist yet), use the original absPath
-
-		// Check if file is in an allowed directory
-		// First check if the file's directory is allowed
-		fileDir := filepath.Dir(absPath)
-		allowed, disallowedMessage := r.validator.IsDirectoryAllowed(fileDir)
-
-		if !allowed {
-			r.logger.LogErrorf("File access attempted outside allowed directories: %s", absPath)
-			return nil, &os.PathError{
-				Op:   "open",
-				Path: path,
-				Err:  fmt.Errorf("access denied: file is outside allowed directories: %s", disallowedMessage),
-			}
-		}
-
-		// Delegate to the default open handler
-		return interp.DefaultOpenHandler()(openCtx, path, flag, perm)
-	}
-
 	// Create interpreter
 	interpRunner, err := interp.New(
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(nil),
 		interp.Dir(absWorkingDir),
-		interp.OpenHandler(openHandler),
+		interp.OpenHandler(r.secureOpenHandler),
 	)
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)
@@ -212,17 +179,45 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	return lastCdDir, err
 }
 
+// secureOpenHandler validates file access against allowed directories before opening.
+func (r *SafeRunner) secureOpenHandler(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+	absPath, absErr := filepath.Abs(path)
+	if absErr != nil {
+		r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
+		return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
+	}
+
+	// Resolve symlinks to prevent directory escape via symlinks
+	if resolved, resolveErr := filepath.EvalSymlinks(absPath); resolveErr == nil {
+		absPath = resolved
+	}
+
+	// Check if file's directory is in the allowed list
+	fileDir := filepath.Dir(absPath)
+	allowed, msg := r.validator.IsDirectoryAllowed(fileDir)
+	if !allowed {
+		r.logger.LogErrorf("File access attempted outside allowed directories: %s", absPath)
+		return nil, &os.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fmt.Errorf("access denied: file is outside allowed directories: %s", msg),
+		}
+	}
+
+	return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+}
+
 // handleCdCall validates a cd command against allowed directories.
 // It resolves the target path relative to the interpreter's current directory,
 // checks it against the allowlist, and tracks the resolved path.
 func (r *SafeRunner) handleCdCall(ctx context.Context, args []string, lastCdDir *string) ([]string, error) {
 	if len(args) < 2 { //nolint:mnd // cd requires at least one argument
-		return args, fmt.Errorf("cd: directory argument required")
+		return args, errors.New("cd: directory argument required")
 	}
 
 	target := args[1]
 	if target == "-" {
-		return args, fmt.Errorf("cd: cd - is not supported for security reasons")
+		return args, errors.New("cd: cd - is not supported for security reasons")
 	}
 
 	// Resolve relative paths against the interpreter's current directory
