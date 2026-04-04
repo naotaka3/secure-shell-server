@@ -1,8 +1,8 @@
 package validator
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,14 +13,14 @@ import (
 
 // TestValidateAwkCommand tests awk command validation through ValidateCommand.
 func TestValidateAwkCommand(t *testing.T) {
-	v, _ := createAwkTestValidator(t)
+	v := createAwkTestValidator(t)
 
 	testAllowedAwkCommands(t, v)
 	testDisallowedAwkCommands(t, v)
 }
 
 // createAwkTestValidator creates a validator for testing awk commands.
-func createAwkTestValidator(t *testing.T) (*CommandValidator, *bytes.Buffer) {
+func createAwkTestValidator(t *testing.T) *CommandValidator {
 	tempHomeDir := t.TempDir()
 	tempWorkDir := t.TempDir()
 
@@ -38,11 +38,10 @@ func createAwkTestValidator(t *testing.T) (*CommandValidator, *bytes.Buffer) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
-	return v, &logBuffer
+	return v
 }
 
 // testAllowedAwkCommands tests awk commands that should be allowed.
@@ -184,96 +183,63 @@ func runAwkValidationTests(t *testing.T, v *CommandValidator, tests []struct {
 	}
 }
 
-// TestAwkScriptFileValidation tests that awk -f validates the content of script files.
+//nolint:dupl // test data for awk script file validation; structurally similar to sed but different commands and messages
 func TestAwkScriptFileValidation(t *testing.T) {
-	v, _ := createAwkTestValidator(t)
+	v := createAwkTestValidator(t)
 	tempDir := t.TempDir()
 
-	// Create a malicious awk script with system() call
-	maliciousSystem := filepath.Join(tempDir, "evil_system.awk")
-	if err := os.WriteFile(maliciousSystem, []byte("BEGIN { system(\"id\") }\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create malicious awk script: %v", err)
-	}
+	paths := createScriptFiles(t, tempDir, []scriptFile{
+		{name: "evil_system.awk", content: "BEGIN { system(\"id\") }\n"},
+		{name: "evil_getline.awk", content: "{\"date\" | getline d; print d}\n"},
+		{name: "safe.awk", content: "{print $1}\n"},
+	})
 
-	// Create a malicious awk script with pipe getline
-	maliciousGetline := filepath.Join(tempDir, "evil_getline.awk")
-	if err := os.WriteFile(maliciousGetline, []byte("{\"date\" | getline d; print d}\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create malicious awk script: %v", err)
-	}
+	nonExistent := filepath.Join(tempDir, "nonexistent.awk")
 
-	// Create a safe awk script
-	safeFile := filepath.Join(tempDir, "safe.awk")
-	if err := os.WriteFile(safeFile, []byte("{print $1}\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create safe awk script: %v", err)
-	}
-
-	tests := []struct {
-		name    string
-		cmd     string
-		args    []string
-		allowed bool
-		message string
-	}{
+	runValidationTestCases(t, v, []validationTestCase{
 		{
 			name:    "ScriptFileWithSystemCall",
 			cmd:     "awk",
-			args:    []string{"-f", maliciousSystem},
+			args:    []string{"-f", paths["evil_system.awk"]},
 			allowed: false,
 			message: "awk command blocked: awk script file contains dangerous command execution pattern",
 		},
 		{
 			name:    "ScriptFileWithPipeGetline",
 			cmd:     "awk",
-			args:    []string{"-f", maliciousGetline},
+			args:    []string{"-f", paths["evil_getline.awk"]},
 			allowed: false,
 			message: "awk command blocked: awk script file contains dangerous command execution pattern",
 		},
 		{
 			name:    "SafeScriptFile",
 			cmd:     "awk",
-			args:    []string{"-f", safeFile},
+			args:    []string{"-f", paths["safe.awk"]},
 			allowed: true,
 			message: "",
 		},
 		{
 			name:    "NonExistentScriptFile",
 			cmd:     "awk",
-			args:    []string{"-f", filepath.Join(tempDir, "nonexistent.awk")},
+			args:    []string{"-f", nonExistent},
 			allowed: false,
-			message: fmt.Sprintf("awk command blocked: cannot read awk script file %q for validation", filepath.Join(tempDir, "nonexistent.awk")),
+			message: fmt.Sprintf("awk command blocked: cannot read awk script file %q for validation", nonExistent),
 		},
 		{
 			name:    "LongFormFileFlag",
 			cmd:     "awk",
-			args:    []string{"--file", maliciousSystem},
+			args:    []string{"--file", paths["evil_system.awk"]},
 			allowed: false,
 			message: "awk command blocked: awk script file contains dangerous command execution pattern",
 		},
 		{
 			name:    "GawkScriptFileWithSystemCall",
 			cmd:     "gawk",
-			args:    []string{"-f", maliciousSystem},
+			args:    []string{"-f", paths["evil_system.awk"]},
 			allowed: false,
 			message: "gawk command blocked: awk script file contains dangerous command execution pattern",
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			wd, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("Failed to get working directory: %v", err)
-			}
-
-			gotAllowed, gotMessage := v.ValidateCommand(tt.cmd, tt.args, wd)
-			if gotAllowed != tt.allowed {
-				t.Errorf("ValidateCommand() allowed = %v, want %v", gotAllowed, tt.allowed)
-			}
-			if gotMessage != tt.message {
-				t.Errorf("ValidateCommand() message = %q, want %q", gotMessage, tt.message)
-			}
-		})
-	}
+	})
 }
 
 // TestAwkWhenNotAllowed tests awk validation when awk is not in the allowed commands list.
@@ -287,8 +253,7 @@ func TestAwkWhenNotAllowed(t *testing.T) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
 	wd, _ := os.Getwd()
@@ -314,8 +279,7 @@ func TestAwkWhenExplicitlyDenied(t *testing.T) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
 	wd, _ := os.Getwd()

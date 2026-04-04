@@ -44,7 +44,7 @@ func testSafeSedPatterns(t *testing.T, v *SedValidator) {
 	// Create a safe script file for -f flag test
 	tmpDir := t.TempDir()
 	safeScript := filepath.Join(tmpDir, "safe.sed")
-	if err := os.WriteFile(safeScript, []byte("s/foo/bar/g\n"), 0o644); err != nil {
+	if err := os.WriteFile(safeScript, []byte("s/foo/bar/g\n"), 0o600); err != nil {
 		t.Fatalf("Failed to create safe sed script: %v", err)
 	}
 
