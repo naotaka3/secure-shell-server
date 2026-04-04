@@ -1,8 +1,8 @@
 package validator
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,14 +13,14 @@ import (
 
 // TestValidateSedCommand tests sed command validation through ValidateCommand.
 func TestValidateSedCommand(t *testing.T) {
-	v, _ := createSedTestValidator(t)
+	v := createSedTestValidator(t)
 
 	testAllowedSedCommands(t, v)
 	testDisallowedSedCommands(t, v)
 }
 
 // createSedTestValidator creates a validator for testing sed commands.
-func createSedTestValidator(t *testing.T) (*CommandValidator, *bytes.Buffer) {
+func createSedTestValidator(t *testing.T) *CommandValidator {
 	tempHomeDir := t.TempDir()
 	tempWorkDir := t.TempDir()
 
@@ -38,11 +38,10 @@ func createSedTestValidator(t *testing.T) (*CommandValidator, *bytes.Buffer) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
-	return v, &logBuffer
+	return v
 }
 
 // testAllowedSedCommands tests sed commands that should be allowed.
@@ -212,96 +211,63 @@ func runSedValidationTests(t *testing.T, v *CommandValidator, tests []struct {
 	}
 }
 
-// TestSedScriptFileValidation tests that sed -f validates the content of script files.
+//nolint:dupl // test data for sed script file validation; structurally similar to awk but different commands and messages
 func TestSedScriptFileValidation(t *testing.T) {
-	v, _ := createSedTestValidator(t)
+	v := createSedTestValidator(t)
 	tempDir := t.TempDir()
 
-	// Create a malicious sed script file with 'e' command
-	maliciousFile := filepath.Join(tempDir, "evil.sed")
-	if err := os.WriteFile(maliciousFile, []byte("e date\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create malicious sed script: %v", err)
-	}
+	paths := createScriptFiles(t, tempDir, []scriptFile{
+		{name: "evil.sed", content: "e date\n"},
+		{name: "evil_subst.sed", content: "s/foo/bar/e\n"},
+		{name: "safe.sed", content: "s/foo/bar/g\n"},
+	})
 
-	// Create a malicious sed script with s///e flag
-	maliciousSubstFile := filepath.Join(tempDir, "evil_subst.sed")
-	if err := os.WriteFile(maliciousSubstFile, []byte("s/foo/bar/e\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create malicious sed script: %v", err)
-	}
+	nonExistent := filepath.Join(tempDir, "nonexistent.sed")
 
-	// Create a safe sed script file
-	safeFile := filepath.Join(tempDir, "safe.sed")
-	if err := os.WriteFile(safeFile, []byte("s/foo/bar/g\n"), 0o644); err != nil {
-		t.Fatalf("Failed to create safe sed script: %v", err)
-	}
-
-	tests := []struct {
-		name    string
-		cmd     string
-		args    []string
-		allowed bool
-		message string
-	}{
+	runValidationTestCases(t, v, []validationTestCase{
 		{
 			name:    "ScriptFileWithECommand",
 			cmd:     "sed",
-			args:    []string{"-f", maliciousFile},
+			args:    []string{"-f", paths["evil.sed"]},
 			allowed: false,
 			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
 		},
 		{
 			name:    "ScriptFileWithSubstitutionEFlag",
 			cmd:     "sed",
-			args:    []string{"-f", maliciousSubstFile},
+			args:    []string{"-f", paths["evil_subst.sed"]},
 			allowed: false,
 			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
 		},
 		{
 			name:    "SafeScriptFile",
 			cmd:     "sed",
-			args:    []string{"-f", safeFile},
+			args:    []string{"-f", paths["safe.sed"]},
 			allowed: true,
 			message: "",
 		},
 		{
 			name:    "NonExistentScriptFile",
 			cmd:     "sed",
-			args:    []string{"-f", filepath.Join(tempDir, "nonexistent.sed")},
+			args:    []string{"-f", nonExistent},
 			allowed: false,
-			message: fmt.Sprintf("sed command blocked: cannot read sed script file %q for validation", filepath.Join(tempDir, "nonexistent.sed")),
+			message: fmt.Sprintf("sed command blocked: cannot read sed script file %q for validation", nonExistent),
 		},
 		{
 			name:    "LongFormFileFlag",
 			cmd:     "sed",
-			args:    []string{"--file", maliciousFile},
+			args:    []string{"--file", paths["evil.sed"]},
 			allowed: false,
 			message: "sed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
 		},
 		{
 			name:    "GsedScriptFileWithECommand",
 			cmd:     "gsed",
-			args:    []string{"-f", maliciousFile},
+			args:    []string{"-f", paths["evil.sed"]},
 			allowed: false,
 			message: "gsed command blocked: sed script file contains dangerous 'e' command that executes shell commands",
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			wd, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("Failed to get working directory: %v", err)
-			}
-
-			gotAllowed, gotMessage := v.ValidateCommand(tt.cmd, tt.args, wd)
-			if gotAllowed != tt.allowed {
-				t.Errorf("ValidateCommand() allowed = %v, want %v", gotAllowed, tt.allowed)
-			}
-			if gotMessage != tt.message {
-				t.Errorf("ValidateCommand() message = %q, want %q", gotMessage, tt.message)
-			}
-		})
-	}
+	})
 }
 
 // TestSedWhenNotAllowed tests sed validation when sed is not in the allowed commands list.
@@ -315,8 +281,7 @@ func TestSedWhenNotAllowed(t *testing.T) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
 	wd, _ := os.Getwd()
@@ -342,8 +307,7 @@ func TestSedWhenExplicitlyDenied(t *testing.T) {
 		DefaultErrorMessage: "Command not allowed by security policy",
 	}
 
-	var logBuffer bytes.Buffer
-	log := logger.NewWithWriter(&logBuffer)
+	log := logger.NewWithWriter(io.Discard)
 	v := New(cfg, log)
 
 	wd, _ := os.Getwd()

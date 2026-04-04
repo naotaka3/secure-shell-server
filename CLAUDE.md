@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Secure Shell Server is a Go MCP (Model Context Protocol) server that prevents LLMs from executing dangerous shell commands. It validates all commands against a configurable allowlist before execution. Commands not explicitly allowed are denied by default.
 
 Two binaries:
+
 - `cmd/server/main.go` — MCP server (stdio or HTTP mode) for Claude Desktop integration
 - `cmd/secure-shell/main.go` — CLI tool for direct command execution with validation
 
@@ -23,6 +24,7 @@ make ci           # precommit + git diff check (used in CI)
 ```
 
 Run a single test:
+
 ```bash
 go test -race -run TestName ./pkg/validator/
 ```
@@ -57,16 +59,28 @@ go test -race -run TestName ./pkg/validator/
 
 ## Development Guidelines
 
-After making changes, verify in this order:
-1. `make test` — all tests pass
-2. `make build` — both binaries compile
-3. `make lint` — no linting issues
+After making changes, always run `make precommit` to catch issues locally before pushing. This runs build + lint + test + vuln in one command and mirrors what CI checks.
+
+```bash
+make precommit    # MUST pass before pushing — catches lint, test, and build errors locally
+```
+
+If you only want to run individual steps:
+
+1. `make lint` — linting issues (golangci-lint with goconst, gosec, dupl, mnd, etc.)
+2. `make test` — all tests pass with race detector
+3. `make build` — both binaries compile
 
 Keep code testable through appropriate file separation and function extraction. Avoid excessive nesting.
+
+### Linting Notes
+
+- `//nolint:dupl` is acceptable on test functions where structural similarity is intentional (e.g., table-driven tests for awk vs sed that test different commands but share the same pattern). Always add an explanation comment.
 
 ### Configuration
 
 See `sample-config.json` for the full format. Key fields:
+
 - `allowedDirectories` — Directories where commands can operate
 - `allowCommands` — Allowlist (strings or objects with subCommands/denyFlags)
 - `denyCommands` — Explicit deny with custom messages

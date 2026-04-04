@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+const (
+	// flagLongFile is the long form of the -f flag used by awk and sed.
+	flagLongFile = "--file"
+
+	// pipeCoprocessLen is the length of the "|&" coprocess operator.
+	pipeCoprocessLen = 2
+)
+
 // AwkValidator handles specific awk/gawk/mawk/nawk command validation.
 type AwkValidator struct{}
 
@@ -107,7 +115,7 @@ func isFlagWithAwkValue(flag string) bool {
 // isAwkFileFlag returns true if the flag is -f/--file (script file flag).
 func isAwkFileFlag(flag string) bool {
 	switch flag {
-	case "-f", "--file":
+	case "-f", flagLongFile:
 		return true
 	}
 	return false
@@ -244,7 +252,7 @@ func containsAwkPipeOutput(script string) bool {
 
 		// Skip |& which is already caught by dangerousAwkPatterns
 		if pipeIdx+1 < len(script) && script[pipeIdx+1] == '&' {
-			idx = pipeIdx + 2
+			idx = pipeIdx + pipeCoprocessLen
 			continue
 		}
 
