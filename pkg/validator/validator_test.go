@@ -564,7 +564,7 @@ func TestSymlinkDirectoryEscape(t *testing.T) {
 
 	// Create a file in the outside directory
 	outsideFile := filepath.Join(outsideDir, "secret.txt")
-	if err := os.WriteFile(outsideFile, []byte("secret"), 0o644); err != nil {
+	if err := os.WriteFile(outsideFile, []byte("secret"), 0o600); err != nil {
 		t.Fatalf("Failed to create outside file: %v", err)
 	}
 

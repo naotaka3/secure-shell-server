@@ -1,6 +1,6 @@
 module github.com/shimizu1995/secure-shell-server
 
-go 1.24.0
+go 1.26.0
 
 tool (
 	github.com/client9/misspell/cmd/misspell

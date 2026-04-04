@@ -41,7 +41,7 @@ func (s *SedValidator) ValidateSedArgs(args []string) (bool, string) {
 			continue
 		}
 
-		if arg == "-f" || arg == "--file" {
+		if arg == "-f" || arg == flagLongFile {
 			if i+1 < len(args) {
 				i++
 				content, err := os.ReadFile(args[i])
@@ -147,6 +147,10 @@ func skipSedAddress(cmd string) string {
 	return cmd[i:]
 }
 
+// sedSubstDelimiterCount is the number of delimiters after the opening one
+// in a sed substitution command (s/pattern/replacement/flags has 2 more delimiters).
+const sedSubstDelimiterCount = 2
+
 // extractSedSubstitutionFlags parses the body of a sed s-command after the opening delimiter
 // and returns the flags string. E.g., for input `foo/bar/ge` with delimiter '/', returns "ge".
 func extractSedSubstitutionFlags(body string, delimiter byte) string {
@@ -160,7 +164,7 @@ func extractSedSubstitutionFlags(body string, delimiter byte) string {
 		}
 		if body[i] == delimiter {
 			count++
-			if count == 2 {
+			if count == sedSubstDelimiterCount {
 				// Everything after this delimiter is flags
 				return body[i+1:]
 			}
@@ -181,7 +185,7 @@ func filterSedNonPathArgs(args []string) []string {
 		arg := args[i]
 
 		// -e and -f take a value argument — skip both
-		if arg == "-e" || arg == "--expression" || arg == "-f" || arg == "--file" {
+		if arg == "-e" || arg == "--expression" || arg == "-f" || arg == flagLongFile {
 			if i+1 < len(args) {
 				i++ // skip the value
 			}
