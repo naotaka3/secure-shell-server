@@ -71,38 +71,31 @@ To use secure-shell-server with Claude Desktop:
 
 ## MCP Tools
 
-The server exposes three MCP tools:
-
-### `cd`
-
-Set the working directory for subsequent commands. **This tool MUST be called before using `run`.** The directory must be within the configured `allowedDirectories`.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `path` | Yes | The directory to set as the working directory |
+The server exposes two MCP tools:
 
 ### `run`
 
-Run one or more shell commands in the current working directory (set via `cd`). Only allowed commands within allowed paths are permitted. **You must call `cd` first to set the working directory.**
+Run one or more shell commands in the current working directory. Only allowed commands within allowed paths are permitted. Use the `cd` command to change directories (only within `allowedDirectories`). Directory changes from `cd` persist across subsequent `run` calls.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `commands` | Yes | List of commands to execute |
+| `commands` | Yes | List of commands to execute. Use `cd` to change directories within allowed paths. |
 | `mode` | No | `"parallel"` (default) or `"serial"` |
 
 ### `pwd`
 
-Print the current working directory previously set by `cd`.
+Print the current working directory.
 
 ### Usage Flow
 
 ```
-1. cd(path: "/home/user/project")                      -> Set working directory (REQUIRED FIRST STEP)
+1. run(commands: ["cd /home/user/project"])             -> Set working directory
 2. run(commands: ["ls -la"])                            -> Execute command
 3. run(commands: ["echo hello"])                        -> Directory persists
 4. pwd()                                               -> Check current directory
-5. cd(path: "/tmp")                                    -> Change directory
+5. run(commands: ["cd /tmp"])                           -> Change directory
 6. run(commands: ["pwd"])                               -> Now in /tmp
+7. run(commands: ["cd subdir", "ls -la"], mode: "serial") -> cd + command in one call
 ```
 
 ## Configuration
