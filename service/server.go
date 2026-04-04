@@ -21,26 +21,19 @@ import (
 )
 
 // createRunTool creates the run tool for executing shell commands.
-func createRunTool(useEnvPwd bool) mcp.Tool {
-	desc := "Run one or more shell commands in the current working directory.\n"
-	if useEnvPwd {
-		desc += "The working directory defaults to the PWD environment variable.\n"
-	}
-	desc += "Use the cd command to change directories (only within allowed directories). " +
-		"Directory changes from cd persist across subsequent run calls in serial mode. " +
-		"In parallel mode, cd does not persist because execution order is non-deterministic.\n" +
-		"Multiple commands can be executed in parallel (default) or serial mode."
+func createRunTool() mcp.Tool {
+	desc := "Run shell commands. Only allowlisted commands and directories are permitted. " +
+		"cd only persists in serial mode or with a single command."
 
 	return mcp.NewTool("run",
 		mcp.WithDescription(desc),
 		mcp.WithArray("commands",
 			mcp.Required(),
-			mcp.Description("List of commands to execute. Use cd to change directories within allowed paths."),
+			mcp.Description("Commands to execute."),
 			mcp.Items(map[string]interface{}{"type": "string"}),
 		),
 		mcp.WithString("mode",
-			mcp.Description("Execution mode: \"parallel\" (default) or \"serial\". "+
-				"In serial mode, execution stops on first error."),
+			mcp.Description("\"parallel\" (default) or \"serial\" (stops on first error)."),
 		),
 	)
 }
@@ -121,7 +114,7 @@ func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Serve
 // Start initializes and starts the MCP server.
 func (s *Server) Start() error {
 	// Register tools
-	s.mcpServer.AddTool(createRunTool(s.config.UseEnvPwd), s.HandleRunCommand)
+	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
 	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server
@@ -323,7 +316,7 @@ func formatResults(results []commandResult) *mcp.CallToolResult {
 // ServeStdio starts an MCP server using stdin/stdout for communication.
 func (s *Server) ServeStdio() error {
 	// Register tools
-	s.mcpServer.AddTool(createRunTool(s.config.UseEnvPwd), s.HandleRunCommand)
+	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
 	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server using stdio
