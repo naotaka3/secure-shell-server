@@ -18,11 +18,41 @@ type DenyCommand struct {
 	Message string `json:"message,omitempty"`
 }
 
+// SubCommandRule represents a recursive subcommand rule node.
+// It can be deserialized from a JSON string (name only) or an object (full rule).
+type SubCommandRule struct {
+	Name            string           `json:"name"`
+	DenyFlags       []string         `json:"denyFlags,omitempty"`
+	SubCommands     []SubCommandRule `json:"subCommands,omitempty"`
+	DenySubCommands []string         `json:"denySubCommands,omitempty"`
+	Message         string           `json:"message,omitempty"`
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for SubCommandRule.
+// It accepts both a JSON string (treated as name only) and a full JSON object.
+func (r *SubCommandRule) UnmarshalJSON(data []byte) error {
+	// Try string first
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		r.Name = name
+		return nil
+	}
+
+	// Otherwise, unmarshal as object (use an alias to avoid infinite recursion)
+	type subCommandRuleAlias SubCommandRule
+	var alias subCommandRuleAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*r = SubCommandRule(alias)
+	return nil
+}
+
 // AllowCommand represents a command that is explicitly allowed with optional subcommand specifications.
 type AllowCommand struct {
-	Command         string   `json:"command"`
-	SubCommands     []string `json:"subCommands,omitempty"`
-	DenySubCommands []string `json:"denySubCommands,omitempty"`
+	Command         string           `json:"command"`
+	SubCommands     []SubCommandRule `json:"subCommands,omitempty"`
+	DenySubCommands []string         `json:"denySubCommands,omitempty"`
 }
 
 // ShellCommandConfig holds the configuration for shell command permissions.

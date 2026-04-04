@@ -24,35 +24,35 @@ func testBasicFindExecCommands(t *testing.T, parser *FindParser) {
 	tests := []struct {
 		name       string
 		args       []string
-		wantCmds   []string
+		wantCmds   []ExecCommand
 		wantValid  bool
 		wantErrMsg string
 	}{
 		{
 			name:       "SimpleExec",
 			args:       []string{"-name", "*.txt", "-exec", "echo", "{}", "\\;"},
-			wantCmds:   []string{"echo"},
+			wantCmds:   []ExecCommand{{Name: "echo"}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
 		{
 			name:       "ExecWithPath",
 			args:       []string{"-type", "f", "-exec", "/bin/rm", "{}", "\\;"},
-			wantCmds:   []string{"/bin/rm"},
+			wantCmds:   []ExecCommand{{Name: "/bin/rm"}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
 		{
 			name:       "ExecWithPlusTerminator",
 			args:       []string{"-name", "*.log", "-exec", "gzip", "{}", "+"},
-			wantCmds:   []string{"gzip"},
+			wantCmds:   []ExecCommand{{Name: "gzip"}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
 		{
 			name:       "ExecdirCommand",
 			args:       []string{"-type", "f", "-execdir", "chmod", "+x", "{}", "\\;"},
-			wantCmds:   []string{"chmod"},
+			wantCmds:   []ExecCommand{{Name: "chmod", Args: []string{"+x"}}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
@@ -66,7 +66,7 @@ func testMultipleExecCommands(t *testing.T, parser *FindParser) {
 	tests := []struct {
 		name       string
 		args       []string
-		wantCmds   []string
+		wantCmds   []ExecCommand
 		wantValid  bool
 		wantErrMsg string
 	}{
@@ -78,7 +78,7 @@ func testMultipleExecCommands(t *testing.T, parser *FindParser) {
 				"-exec", "grep", "pattern", "{}", "\\;",
 				"-exec", "cp", "{}", "/backup/", "\\;",
 			},
-			wantCmds:   []string{"grep", "cp"},
+			wantCmds:   []ExecCommand{{Name: "grep", Args: []string{"pattern"}}, {Name: "cp", Args: []string{"/backup/"}}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
@@ -89,7 +89,7 @@ func testMultipleExecCommands(t *testing.T, parser *FindParser) {
 				"-exec", "ls", "-la", "{}", "\\;",
 				"-execdir", "chmod", "644", "{}", "\\;",
 			},
-			wantCmds:   []string{"ls", "chmod"},
+			wantCmds:   []ExecCommand{{Name: "ls", Args: []string{"-la"}}, {Name: "chmod", Args: []string{"644"}}},
 			wantValid:  true,
 			wantErrMsg: "",
 		},
@@ -103,7 +103,7 @@ func testFindExecEdgeCases(t *testing.T, parser *FindParser) {
 	tests := []struct {
 		name       string
 		args       []string
-		wantCmds   []string
+		wantCmds   []ExecCommand
 		wantValid  bool
 		wantErrMsg string
 	}{
@@ -137,7 +137,7 @@ func testFindExecEdgeCases(t *testing.T, parser *FindParser) {
 func runFindParserTests(t *testing.T, parser *FindParser, tests []struct {
 	name       string
 	args       []string
-	wantCmds   []string
+	wantCmds   []ExecCommand
 	wantValid  bool
 	wantErrMsg string
 },

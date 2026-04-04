@@ -20,7 +20,7 @@ func setupCustomConfig() *config.ShellCommandConfig {
 			{Command: "echo"},
 			{Command: "grep"},
 			{Command: "find"},
-			{Command: "git", SubCommands: []string{"status", "log", "diff"}, DenySubCommands: []string{"push", "commit"}},
+			{Command: "git", SubCommands: []config.SubCommandRule{{Name: "status"}, {Name: "log"}, {Name: "diff"}}, DenySubCommands: []string{"push", "commit"}},
 		},
 		DenyCommands: []config.DenyCommand{
 			{Command: "rm", Message: "Remove command is not allowed"},
@@ -91,6 +91,37 @@ func TestSafeRunner_CommandValidation(t *testing.T) {
 		ctx := t.Context()
 		err := safeRunner.RunCommand(ctx, "", "/tmp")
 		assert.NoError(t, err)
+	})
+}
+
+func TestSafeRunner_AbsolutePathCommandNormalization(t *testing.T) {
+	cfg := setupCustomConfig()
+	log := logger.New()
+	validatorObj := validator.New(cfg, log)
+	safeRunner := New(cfg, validatorObj, log)
+	safeRunner.SetOutputs(io.Discard, io.Discard)
+
+	// /usr/bin/rm should be blocked as "rm" (which is in denyCommands)
+	t.Run("AbsolutePathDeniedCommand", func(t *testing.T) {
+		ctx := t.Context()
+		err := safeRunner.RunCommand(ctx, "/bin/rm -rf /tmp/test", "/tmp")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "command \"rm\" is denied")
+	})
+
+	// /bin/echo should be allowed as "echo" (which is in allowCommands)
+	t.Run("AbsolutePathAllowedCommand", func(t *testing.T) {
+		ctx := t.Context()
+		err := safeRunner.RunCommand(ctx, "/bin/echo hello", "/tmp")
+		assert.NoError(t, err)
+	})
+
+	// /usr/bin/wget should be blocked (not in allowCommands)
+	t.Run("AbsolutePathUnlistedCommand", func(t *testing.T) {
+		ctx := t.Context()
+		err := safeRunner.RunCommand(ctx, "/usr/bin/wget https://example.com", "/tmp")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "command \"wget\" is not permitted")
 	})
 }
 

@@ -39,9 +39,13 @@ func (v *CommandValidator) IsDirectoryAllowed(dir string) (bool, string) {
 		return false, "empty directory path is not allowed"
 	}
 
+	// Resolve symlinks to get the real path
+	resolvedDir := resolveSymlinksPath(dir)
+
 	// Check if the directory is in the allowed directories list or is a subdirectory of an allowed directory
 	for _, allowedDir := range v.config.AllowedDirectories {
-		if strings.HasPrefix(dir, allowedDir) {
+		resolvedAllowed := resolveSymlinksPath(allowedDir)
+		if strings.HasPrefix(resolvedDir, resolvedAllowed) {
 			return true, ""
 		}
 	}
@@ -75,6 +79,9 @@ func (v *CommandValidator) IsPathInAllowedDirectory(path string, baseDir string)
 		return false, fmt.Sprintf("failed to resolve absolute path: %v", err)
 	}
 
+	// Resolve symlinks to get the real path
+	absPath = resolveSymlinksPath(absPath)
+
 	// Check if the resolved path is within any allowed directory
 	for _, allowedDir := range v.config.AllowedDirectories {
 		// Get absolute path of allowed directory for proper comparison
@@ -83,6 +90,9 @@ func (v *CommandValidator) IsPathInAllowedDirectory(path string, baseDir string)
 			continue // Skip directories that can't be resolved
 		}
 
+		// Resolve symlinks in the allowed directory as well
+		allowedAbsDir = resolveSymlinksPath(allowedAbsDir)
+
 		// Check if path is within the allowed directory
 		if strings.HasPrefix(absPath, allowedAbsDir) {
 			return true, ""
@@ -90,6 +100,26 @@ func (v *CommandValidator) IsPathInAllowedDirectory(path string, baseDir string)
 	}
 
 	return false, fmt.Sprintf("path %q is outside of allowed directories: %s", path, v.config.DefaultErrorMessage)
+}
+
+// resolveSymlinksPath resolves symlinks in a path.
+// If the full path doesn't exist, it walks up to the deepest existing ancestor,
+// resolves symlinks there, and appends the remaining components.
+func resolveSymlinksPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+
+	// Path doesn't fully exist — resolve the deepest existing ancestor
+	parent := filepath.Dir(path)
+	if parent == path {
+		// Reached root without resolving — return as-is
+		return path
+	}
+
+	resolvedParent := resolveSymlinksPath(parent)
+	return filepath.Join(resolvedParent, filepath.Base(path))
 }
 
 // isPathLike checks if an argument looks like a file path.
@@ -114,6 +144,16 @@ func (v *CommandValidator) ValidateCommand(cmd string, args []string, workDir st
 	// Special handling for find command with -exec
 	if cmd == "find" {
 		return v.validateFindCommand(args, workDir)
+	}
+
+	// Special handling for awk commands (awk, gawk, mawk, nawk)
+	if IsAwkCommand(cmd) {
+		return v.validateAwkCommand(cmd, args, workDir)
+	}
+
+	// Special handling for sed commands (sed, gsed)
+	if IsSedCommand(cmd) {
+		return v.validateSedCommand(cmd, args, workDir)
 	}
 
 	// Check if the command is explicitly denied
@@ -181,36 +221,100 @@ func (v *CommandValidator) isCommandExplicitlyDenied(cmd string) (bool, string) 
 }
 
 // checkSubCommandPermissions checks if the subcommand is allowed for the specified command.
+// It delegates to the recursive checkSubCommandRule for the top-level AllowCommand.
 func (v *CommandValidator) checkSubCommandPermissions(cmd string, args []string, allowed config.AllowCommand) (bool, string) {
-	// If there are subcommands specified, check if the first argument matches any of them
-	if len(allowed.SubCommands) > 0 && len(args) > 0 {
-		subCommandAllowed := false
-		for _, subCmd := range allowed.SubCommands {
-			if args[0] == subCmd {
-				subCommandAllowed = true
-				break
-			}
-		}
+	// Convert top-level AllowCommand into a SubCommandRule-compatible check
+	return v.checkSubCommandRule(cmd, args, allowed.SubCommands, allowed.DenySubCommands, nil, "")
+}
 
-		if !subCommandAllowed {
-			deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmd)
-			v.logBlockedCommand(cmd, args, deniedMessage)
+// checkSubCommandRule recursively validates args against a SubCommandRule tree.
+// cmdPath is the command path so far (e.g. "git" or "docker compose") for error messages.
+// subCommands is the list of allowed sub-command rules at this level.
+// denySubCommands is the list of denied sub-commands at this level.
+// denyFlags is the list of denied flags at this level.
+// message is a custom error message for denied flags at this level.
+func (v *CommandValidator) checkSubCommandRule(cmdPath string, args []string, subCommands []config.SubCommandRule, denySubCommands []string, denyFlags []string, message string) (bool, string) {
+	// If no more args, nothing to deny
+	if len(args) == 0 {
+		return true, ""
+	}
+
+	// Check denied subcommands at this level
+	for _, denied := range denySubCommands {
+		if args[0] == denied {
+			deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmdPath)
+			v.logBlockedCommand(cmdPath, args, deniedMessage)
 			return false, deniedMessage
 		}
 	}
 
-	// If there are denied subcommands specified, check if the first argument matches any of them
-	if len(allowed.DenySubCommands) > 0 && len(args) > 0 {
-		for _, deniedSubCmd := range allowed.DenySubCommands {
-			if args[0] == deniedSubCmd {
-				deniedMessage := fmt.Sprintf("subcommand %q is denied for command %q", args[0], cmd)
-				v.logBlockedCommand(cmd, args, deniedMessage)
+	// If there are subcommand rules, try to match args[0] against them
+	if len(subCommands) > 0 {
+		for _, rule := range subCommands {
+			if rule.Name == args[0] {
+				// Found a matching rule — recurse into it
+				nextPath := cmdPath + " " + args[0]
+				return v.checkSubCommandRule(nextPath, args[1:], rule.SubCommands, rule.DenySubCommands, rule.DenyFlags, rule.Message)
+			}
+		}
+
+		// args[0] not found in allowed subcommands (allowlist mode) — deny
+		deniedMessage := fmt.Sprintf("subcommand %q is not allowed for command %q", args[0], cmdPath)
+		v.logBlockedCommand(cmdPath, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// No subcommand rules at this level — check denyFlags against all remaining args
+	return v.checkDenyFlags(cmdPath, args, denyFlags, message)
+}
+
+// checkDenyFlags scans args for any flag in denyFlags.
+func (v *CommandValidator) checkDenyFlags(cmdPath string, args []string, denyFlags []string, message string) (bool, string) {
+	for _, arg := range args {
+		for _, denied := range denyFlags {
+			if isDenyFlagMatch(arg, denied) {
+				deniedMessage := fmt.Sprintf("flag %q is not allowed for command %q", denied, cmdPath)
+				if message != "" {
+					deniedMessage += ": " + message
+				}
+				v.logBlockedCommand(cmdPath, args, deniedMessage)
 				return false, deniedMessage
 			}
 		}
 	}
-
 	return true, ""
+}
+
+// isDenyFlagMatch checks if an argument matches a denied flag.
+// It supports:
+//   - Exact match: "-f" == "-f"
+//   - Combined short flags: "-fv" contains denied "-f" (single-char short flag)
+//   - --flag=value format: "--force=true" matches denied "--force"
+func isDenyFlagMatch(arg, denied string) bool {
+	// Exact match
+	if arg == denied {
+		return true
+	}
+
+	// --flag=value format: denied is "--xyz", arg is "--xyz=something"
+	if strings.HasPrefix(denied, "--") && strings.HasPrefix(arg, denied+"=") {
+		return true
+	}
+
+	// Combined short flags: denied is "-X" (single hyphen + 1 char),
+	// arg is "-XY..." (single hyphen, not "--")
+	if len(denied) == 2 && denied[0] == '-' && denied[1] != '-' &&
+		len(arg) > 2 && arg[0] == '-' && arg[1] != '-' {
+		// Check if the denied character appears in the combined flags
+		deniedChar := denied[1]
+		for _, c := range arg[1:] {
+			if byte(c) == deniedChar {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // validateXargsCommand checks if the command executed by xargs is allowed.
@@ -280,21 +384,13 @@ func (v *CommandValidator) validateFindCommand(args []string, workDir string) (b
 		return v.validatePathArguments("find", filteredArgs, workDir)
 	}
 
-	// Validate each -exec command
+	// Validate each -exec command with its full arguments
 	for _, execCmd := range execCommands {
-		// Check if the command is explicitly denied
-		if denied, message := v.isCommandExplicitlyDenied(execCmd); denied {
+		allowed, message := v.ValidateCommand(execCmd.Name, execCmd.Args, workDir)
+		if !allowed {
 			message = "find command contains disallowed -exec: " + message
 			v.logBlockedCommand("find", args, message)
 			return false, message
-		}
-
-		// Check if the command is explicitly allowed
-		if !v.config.IsCommandAllowed(execCmd) {
-			deniedMessage := fmt.Sprintf("find command contains disallowed -exec: command %q is not permitted: %s",
-				execCmd, v.config.DefaultErrorMessage)
-			v.logBlockedCommand("find", args, deniedMessage)
-			return false, deniedMessage
 		}
 	}
 
@@ -302,6 +398,62 @@ func (v *CommandValidator) validateFindCommand(args []string, workDir string) (b
 	// Filter out special characters used by find -exec syntax before path validation
 	filteredArgs := parser.FilterFindSpecialArgs(args)
 	return v.validatePathArguments("find", filteredArgs, workDir)
+}
+
+// validateAwkCommand checks if an awk command contains dangerous patterns.
+func (v *CommandValidator) validateAwkCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Check if the command is explicitly denied
+	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Check if the command is explicitly allowed
+	if !v.config.IsCommandAllowed(cmd) {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+		v.logBlockedCommand(cmd, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Check for dangerous patterns in awk script
+	awkValidator := NewAwkValidator()
+	if hasDanger, description := awkValidator.ValidateAwkArgs(args); hasDanger {
+		message := fmt.Sprintf("%s command blocked: %s", cmd, description)
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Validate path arguments, filtering out the awk script and flags
+	filteredArgs := filterAwkNonPathArgs(args)
+	return v.validatePathArguments(cmd, filteredArgs, workDir)
+}
+
+// validateSedCommand checks if a sed command contains dangerous patterns.
+func (v *CommandValidator) validateSedCommand(cmd string, args []string, workDir string) (bool, string) {
+	// Check if the command is explicitly denied
+	if denied, message := v.isCommandExplicitlyDenied(cmd); denied {
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Check if the command is explicitly allowed
+	if !v.config.IsCommandAllowed(cmd) {
+		deniedMessage := fmt.Sprintf("command %q is not permitted: %s", cmd, v.config.DefaultErrorMessage)
+		v.logBlockedCommand(cmd, args, deniedMessage)
+		return false, deniedMessage
+	}
+
+	// Check for dangerous patterns in sed script
+	sedValidator := NewSedValidator()
+	if hasDanger, description := sedValidator.ValidateSedArgs(args); hasDanger {
+		message := fmt.Sprintf("%s command blocked: %s", cmd, description)
+		v.logBlockedCommand(cmd, args, message)
+		return false, message
+	}
+
+	// Validate path arguments, filtering out sed scripts and expressions
+	filteredArgs := filterSedNonPathArgs(args)
+	return v.validatePathArguments(cmd, filteredArgs, workDir)
 }
 
 // logBlockedCommand logs blocked commands to the specified file.

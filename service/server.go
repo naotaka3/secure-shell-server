@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,19 +20,39 @@ import (
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
 
-// createRunCommandTool creates the common run_command tool with appropriate descriptions.
-func createRunCommandTool() mcp.Tool {
-	return mcp.NewTool("run_command",
-		mcp.WithDescription("Run shell commands in specific directories (only within allowed paths).\n"+
-			"The \"directory\" parameter sets the working directory automatically; \"cd\" command isn't needed."),
-		mcp.WithString("command",
+// createRunTool creates the run tool for executing shell commands.
+func createRunTool() mcp.Tool {
+	return mcp.NewTool("run",
+		mcp.WithDescription("Run one or more shell commands in the current working directory.\n"+
+			"IMPORTANT: The working directory must be set with the MCP cd tool beforehand. Do NOT use the shell cd command inside commands.\n"+
+			"Multiple commands can be executed in parallel (default) or serial mode."),
+		mcp.WithArray("commands",
 			mcp.Required(),
-			mcp.Description("Command to execute"),
+			mcp.Description("List of commands to execute. Do not include cd in commands; use the MCP cd tool instead."),
+			mcp.Items(map[string]interface{}{"type": "string"}),
 		),
-		mcp.WithString("directory",
+		mcp.WithString("mode",
+			mcp.Description("Execution mode: \"parallel\" (default) or \"serial\". "+
+				"In serial mode, execution stops on first error."),
+		),
+	)
+}
+
+// createCdTool creates the cd tool for setting the working directory.
+func createCdTool() mcp.Tool {
+	return mcp.NewTool("cd",
+		mcp.WithDescription("Set the working directory for subsequent run commands.\n"+
+			"MUST be called before the first run call. The directory must be within allowed paths."),
+		mcp.WithString("path",
 			mcp.Required(),
-			mcp.Description("Working directory to execute the command in."),
 		),
+	)
+}
+
+// createPwdTool creates the pwd tool for displaying the current working directory.
+func createPwdTool() mcp.Tool {
+	return mcp.NewTool("pwd",
+		mcp.WithDescription("Print the current working directory."),
 	)
 }
 
@@ -43,6 +66,8 @@ type Server struct {
 	port      int
 	// Mutex to protect shared resources (config, runner, validator) during command execution
 	cmdMutex sync.Mutex
+	// workingDir holds the session's current working directory. Empty means not yet set.
+	workingDir string
 }
 
 // NewServer creates a new MCP server instance.
@@ -75,11 +100,10 @@ func NewServer(cfg *config.ShellCommandConfig, port int, logPath string) (*Serve
 
 // Start initializes and starts the MCP server.
 func (s *Server) Start() error {
-	// Register the run_command tool
-	runCommandTool := createRunCommandTool()
-
-	// Add the tool handler
-	s.mcpServer.AddTool(runCommandTool, s.handleRunCommand)
+	// Register tools
+	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
+	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server
 	address := fmt.Sprintf(":%d", s.port)
@@ -112,51 +136,182 @@ func (s *Server) Start() error {
 	return server.ListenAndServe()
 }
 
-// handleRunCommand handles the run_command tool execution.
-func (s *Server) handleRunCommand(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Extract parameters
-	commandStr, ok := request.Params.Arguments["command"].(string)
-	if !ok || commandStr == "" {
-		return mcp.NewToolResultError("Command parameter must be a non-empty string"), nil
+// HandlePwd handles the pwd tool execution.
+func (s *Server) HandlePwd(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.cmdMutex.Lock()
+	workingDir := s.workingDir
+	s.cmdMutex.Unlock()
+
+	if workingDir == "" {
+		return mcp.NewToolResultError("No working directory set. Use the \"cd\" tool to set a working directory first."), nil
 	}
 
-	directory, ok := request.Params.Arguments["directory"].(string)
+	return mcp.NewToolResultText(workingDir), nil
+}
+
+// HandleCd handles the cd tool execution.
+func (s *Server) HandleCd(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	directory, ok := request.Params.Arguments["path"].(string)
 	if !ok || directory == "" {
 		return mcp.NewToolResultError("Directory parameter must be a non-empty string"), nil
 	}
 
-	// Log the command attempt
-	s.logger.LogInfof("Command attempt: %s in directory: %s", commandStr, directory)
-
-	// Create a buffer to capture the output
-	outputBuffer := new(strings.Builder)
-
-	// Acquire the lock to protect shared resources
-	s.cmdMutex.Lock()
-	defer s.cmdMutex.Unlock()
-
-	// Set the outputs on the existing runner
-	s.runner.SetOutputs(outputBuffer, outputBuffer)
-
-	// Execute the command with the specified directory
-	err := s.runner.RunCommand(ctx, commandStr, directory)
+	absDir, err := filepath.Abs(directory)
 	if err != nil {
-		s.logger.LogErrorf("Command execution failed: %v", err)
-		output := fmt.Sprintf("Error: %v\n%s", err, outputBuffer.String())
-		return mcp.NewToolResultError(output), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve directory path: %v", err)), nil
 	}
 
-	// Return the command output
-	return mcp.NewToolResultText(outputBuffer.String()), nil
+	// Validate against allowed directories
+	allowed, msg := s.validator.IsDirectoryAllowed(absDir)
+	if !allowed {
+		return mcp.NewToolResultError(msg), nil
+	}
+
+	// Verify directory exists
+	info, err := os.Stat(absDir)
+	if err != nil || !info.IsDir() {
+		return mcp.NewToolResultError("Directory does not exist: " + absDir), nil
+	}
+
+	s.cmdMutex.Lock()
+	s.workingDir = absDir
+	s.cmdMutex.Unlock()
+
+	s.logger.LogInfof("Working directory changed to: %s", absDir)
+	return mcp.NewToolResultText("Working directory set to: " + absDir), nil
+}
+
+// commandResult holds the output of a single command execution.
+type commandResult struct {
+	command string
+	output  string
+	err     error
+}
+
+// HandleRunCommand handles the run tool execution.
+func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	commands, err := parseCommands(request.Params.Arguments["commands"])
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	mode := "parallel"
+	if m, ok := request.Params.Arguments["mode"].(string); ok && m != "" {
+		if m != "parallel" && m != "serial" {
+			return mcp.NewToolResultError("Mode must be \"parallel\" or \"serial\""), nil
+		}
+		mode = m
+	}
+
+	s.cmdMutex.Lock()
+	workingDir := s.workingDir
+	s.cmdMutex.Unlock()
+
+	if workingDir == "" {
+		return mcp.NewToolResultError("No working directory set. Use the \"cd\" tool to set a working directory first."), nil
+	}
+
+	var results []commandResult
+	if mode == "serial" {
+		results = s.runSerial(ctx, commands, workingDir)
+	} else {
+		results = s.runParallel(ctx, commands, workingDir)
+	}
+
+	return formatResults(results), nil
+}
+
+// parseCommands extracts and validates the commands array from the request arguments.
+func parseCommands(raw interface{}) ([]string, error) {
+	arr, ok := raw.([]interface{})
+	if !ok || len(arr) == 0 {
+		return nil, errors.New("commands parameter must be a non-empty array of strings")
+	}
+	commands := make([]string, 0, len(arr))
+	for i, v := range arr {
+		s, ok := v.(string)
+		if !ok || s == "" {
+			return nil, fmt.Errorf("commands[%d] must be a non-empty string", i)
+		}
+		commands = append(commands, s)
+	}
+	return commands, nil
+}
+
+// runSerial executes commands one by one, stopping on first error.
+func (s *Server) runSerial(ctx context.Context, commands []string, workingDir string) []commandResult {
+	results := make([]commandResult, 0, len(commands))
+	for _, cmd := range commands {
+		r := s.executeOne(ctx, cmd, workingDir)
+		results = append(results, r)
+		if r.err != nil {
+			break
+		}
+	}
+	return results
+}
+
+// runParallel executes all commands concurrently.
+func (s *Server) runParallel(ctx context.Context, commands []string, workingDir string) []commandResult {
+	results := make([]commandResult, len(commands))
+	var wg sync.WaitGroup
+	for i, cmd := range commands {
+		wg.Add(1)
+		go func(idx int, c string) {
+			defer wg.Done()
+			results[idx] = s.executeOne(ctx, c, workingDir)
+		}(i, cmd)
+	}
+	wg.Wait()
+	return results
+}
+
+// executeOne runs a single command and returns its result.
+func (s *Server) executeOne(ctx context.Context, command, workingDir string) commandResult {
+	s.logger.LogInfof("Command attempt: %s in directory: %s", command, workingDir)
+
+	r := runner.New(s.config, s.validator, s.logger)
+	buf := new(strings.Builder)
+	r.SetOutputs(buf, buf)
+
+	err := r.RunCommand(ctx, command, workingDir)
+	if err != nil {
+		s.logger.LogErrorf("Command execution failed: %v", err)
+	}
+	return commandResult{command: command, output: buf.String(), err: err}
+}
+
+// formatResults builds a tool result from command results.
+func formatResults(results []commandResult) *mcp.CallToolResult {
+	hasError := false
+	var sb strings.Builder
+
+	for i, r := range results {
+		if len(results) > 1 {
+			fmt.Fprintf(&sb, "--- [%d] %s ---\n", i, r.command)
+		}
+		if r.err != nil {
+			hasError = true
+			fmt.Fprintf(&sb, "Error: %v\n", r.err)
+		}
+		sb.WriteString(r.output)
+		if len(results) > 1 && i < len(results)-1 {
+			sb.WriteString("\n")
+		}
+	}
+
+	if hasError {
+		return mcp.NewToolResultError(sb.String())
+	}
+	return mcp.NewToolResultText(sb.String())
 }
 
 // ServeStdio starts an MCP server using stdin/stdout for communication.
 func (s *Server) ServeStdio() error {
-	// Register the run_command tool
-	runCommandTool := createRunCommandTool()
-
-	// Add the tool handler
-	s.mcpServer.AddTool(runCommandTool, s.handleRunCommand)
+	// Register tools
+	s.mcpServer.AddTool(createRunTool(), s.HandleRunCommand)
+	s.mcpServer.AddTool(createCdTool(), s.HandleCd)
+	s.mcpServer.AddTool(createPwdTool(), s.HandlePwd)
 
 	// Start the server using stdio
 	s.logger.LogInfof("Starting MCP server using stdin/stdout")

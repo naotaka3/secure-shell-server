@@ -185,6 +185,88 @@ func runFindValidationTests(t *testing.T, v *CommandValidator, tests []struct {
 	}
 }
 
+// TestFindExecWithDenyFlags tests that find -exec validates command arguments including denyFlags.
+func TestFindExecWithDenyFlags(t *testing.T) {
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories: []string{"/tmp", "/home"},
+		AllowCommands: []config.AllowCommand{
+			{Command: "find"},
+			{Command: "ls"},
+			{
+				Command: "git",
+				SubCommands: []config.SubCommandRule{
+					{Name: "status"},
+					{
+						Name:      "push",
+						DenyFlags: []string{"-f", "--force"},
+						Message:   "Force push is not allowed",
+					},
+				},
+			},
+			{Command: "grep"},
+		},
+		DenyCommands: []config.DenyCommand{
+			{Command: "rm", Message: "Remove command is not allowed"},
+		},
+		DefaultErrorMessage: "Command not allowed by security policy",
+	}
+
+	var logBuffer bytes.Buffer
+	log := logger.NewWithWriter(&logBuffer)
+	v := New(cfg, log)
+
+	tests := []struct {
+		name    string
+		args    []string
+		allowed bool
+		message string
+	}{
+		{
+			name:    "ExecGitPushForce_denied",
+			args:    []string{".", "-exec", "git", "push", "--force", "\\;"},
+			allowed: false,
+			message: `find command contains disallowed -exec: flag "--force" is not allowed for command "git push": Force push is not allowed`,
+		},
+		{
+			name:    "ExecGitPushForceShort_denied",
+			args:    []string{".", "-exec", "git", "push", "-f", "\\;"},
+			allowed: false,
+			message: `find command contains disallowed -exec: flag "-f" is not allowed for command "git push": Force push is not allowed`,
+		},
+		{
+			name:    "ExecGitStatus_allowed",
+			args:    []string{".", "-exec", "git", "status", "\\;"},
+			allowed: true,
+			message: "",
+		},
+		{
+			name:    "ExecRm_denied",
+			args:    []string{".", "-exec", "rm", "-rf", "{}", "\\;"},
+			allowed: false,
+			message: `find command contains disallowed -exec: command "rm" is denied: Remove command is not allowed`,
+		},
+		{
+			name:    "ExecGrep_allowed",
+			args:    []string{".", "-exec", "grep", "pattern", "{}", "+"},
+			allowed: true,
+			message: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logBuffer.Reset()
+			gotAllowed, gotMessage := v.ValidateCommand("find", tt.args, "/home")
+			if gotAllowed != tt.allowed {
+				t.Errorf("ValidateCommand() allowed = %v, want %v (message: %q)", gotAllowed, tt.allowed, gotMessage)
+			}
+			if gotMessage != tt.message {
+				t.Errorf("ValidateCommand() message = %q, want %q", gotMessage, tt.message)
+			}
+		})
+	}
+}
+
 // TestFindWhenNotAllowed tests find validation when find is not in the allowed commands list.
 func TestFindWhenNotAllowed(t *testing.T) {
 	// Create a configuration that doesn't include find in allowed commands
