@@ -192,19 +192,34 @@ func TestCdViaRun(t *testing.T) {
 func TestCdPersistence(t *testing.T) {
 	ctx := t.Context()
 
-	t.Run("cd in parallel mode does not persist", func(t *testing.T) {
+	t.Run("cd with single command in parallel mode persists", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+
+		// Single command in parallel mode — safe to persist
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + freshTmpDir},
+		}))
+
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, freshTmpDir)
+	})
+
+	t.Run("cd with multiple commands in parallel mode does not persist", func(t *testing.T) {
 		freshSrv, freshTmpDir := newTestServer(t)
 		subDir := freshTmpDir + "/parallel-sub"
 		if err := makeDir(subDir); err != nil {
 			t.Fatalf("failed to create subdir: %v", err)
 		}
 
-		// cd in parallel mode (default)
+		// Multiple commands in parallel mode — cd should not persist
 		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
-			"commands": []interface{}{"cd " + subDir},
+			"commands": []interface{}{"cd " + subDir, "echo hello"},
 		}))
 
-		// pwd should still show no working directory set (cd in parallel was not persisted)
+		// pwd should still show no working directory set
 		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

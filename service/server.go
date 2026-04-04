@@ -213,9 +213,9 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 		results = s.runParallel(ctx, commands, workingDir)
 	}
 
-	// Persist the last cd directory change from serial execution only.
-	// In parallel mode, cd results are non-deterministic and should not be persisted.
-	if mode == modeSerial {
+	// Persist cd directory changes from serial execution, or parallel with a single command.
+	// In parallel mode with multiple commands, cd results are non-deterministic and should not be persisted.
+	if mode == modeSerial || len(commands) == 1 {
 		for i := len(results) - 1; i >= 0; i-- {
 			if results[i].newWorkDir != "" {
 				s.cmdMutex.Lock()
