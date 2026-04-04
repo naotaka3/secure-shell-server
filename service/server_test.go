@@ -104,9 +104,10 @@ func TestPwd(t *testing.T) {
 	})
 
 	t.Run("returns directory after cd via run", func(t *testing.T) {
-		// Use cd within run to set working directory
+		// Use cd within run (serial mode) to set working directory
 		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
 		}))
 		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
 		if err != nil {
@@ -170,10 +171,11 @@ func TestCdViaRun(t *testing.T) {
 		assertToolError(t, result, "not supported")
 	})
 
-	t.Run("cd persists across run calls", func(t *testing.T) {
-		// First call: cd to tmpDir
+	t.Run("cd persists across run calls in serial mode", func(t *testing.T) {
+		// First call: cd to tmpDir in serial mode
 		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
 		}))
 
 		// Second call: pwd should show tmpDir
@@ -185,8 +187,48 @@ func TestCdViaRun(t *testing.T) {
 		}
 		assertToolSuccess(t, result, tmpDir)
 	})
+}
+
+func TestCdPersistence(t *testing.T) {
+	ctx := t.Context()
+
+	t.Run("cd in parallel mode does not persist", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+		subDir := freshTmpDir + "/parallel-sub"
+		if err := makeDir(subDir); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		// cd in parallel mode (default)
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + subDir},
+		}))
+
+		// pwd should still show no working directory set (cd in parallel was not persisted)
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+
+	t.Run("cd in serial mode persists", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + freshTmpDir},
+			"mode":     "serial",
+		}))
+
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, freshTmpDir)
+	})
 
 	t.Run("cd with relative path in serial mode", func(t *testing.T) {
+		srv, tmpDir := newTestServer(t)
 		subDir := tmpDir + "/subdir"
 		if err := makeDir(subDir); err != nil {
 			t.Fatalf("failed to create subdir: %v", err)
@@ -221,6 +263,7 @@ func TestRunCommand(t *testing.T) {
 	t.Run("single command succeeds", func(t *testing.T) {
 		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
 		}))
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"echo hello"},
@@ -280,6 +323,7 @@ func TestRunCommandMultiple(t *testing.T) {
 	ctx := t.Context()
 	_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 		"commands": []interface{}{"cd " + tmpDir},
+		"mode":     "serial",
 	}))
 
 	t.Run("parallel default", func(t *testing.T) {

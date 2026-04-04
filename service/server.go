@@ -27,7 +27,8 @@ func createRunTool(useEnvPwd bool) mcp.Tool {
 		desc += "The working directory defaults to the PWD environment variable.\n"
 	}
 	desc += "Use the cd command to change directories (only within allowed directories). " +
-		"Directory changes from cd persist across subsequent run calls.\n" +
+		"Directory changes from cd persist across subsequent run calls in serial mode. " +
+		"In parallel mode, cd does not persist because execution order is non-deterministic.\n" +
 		"Multiple commands can be executed in parallel (default) or serial mode."
 
 	return mcp.NewTool("run",
@@ -50,6 +51,12 @@ func createPwdTool() mcp.Tool {
 		mcp.WithDescription("Print the current working directory."),
 	)
 }
+
+// Execution mode constants.
+const (
+	modeParallel = "parallel"
+	modeSerial   = "serial"
+)
 
 // Server is the MCP server for secure shell execution.
 type Server struct {
@@ -176,9 +183,9 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	mode := "parallel"
+	mode := modeParallel
 	if m, ok := request.Params.Arguments["mode"].(string); ok && m != "" {
-		if m != "parallel" && m != "serial" {
+		if m != modeParallel && m != modeSerial {
 			return mcp.NewToolResultError("Mode must be \"parallel\" or \"serial\""), nil
 		}
 		mode = m
@@ -200,20 +207,23 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 	}
 
 	var results []commandResult
-	if mode == "serial" {
+	if mode == modeSerial {
 		results = s.runSerial(ctx, commands, workingDir)
 	} else {
 		results = s.runParallel(ctx, commands, workingDir)
 	}
 
-	// Persist the last cd directory change from command execution
-	for i := len(results) - 1; i >= 0; i-- {
-		if results[i].newWorkDir != "" {
-			s.cmdMutex.Lock()
-			s.workingDir = results[i].newWorkDir
-			s.cmdMutex.Unlock()
-			s.logger.LogInfof("Working directory updated by cd: %s", results[i].newWorkDir)
-			break
+	// Persist the last cd directory change from serial execution only.
+	// In parallel mode, cd results are non-deterministic and should not be persisted.
+	if mode == modeSerial {
+		for i := len(results) - 1; i >= 0; i-- {
+			if results[i].newWorkDir != "" {
+				s.cmdMutex.Lock()
+				s.workingDir = results[i].newWorkDir
+				s.cmdMutex.Unlock()
+				s.logger.LogInfof("Working directory updated by cd: %s", results[i].newWorkDir)
+				break
+			}
 		}
 	}
 
