@@ -125,6 +125,75 @@ func TestSafeRunner_AbsolutePathCommandNormalization(t *testing.T) {
 	})
 }
 
+func TestSafeRunner_CdDenyCommand(t *testing.T) {
+	cfg := setupCustomConfig()
+	cfg.AllowCommands = append(cfg.AllowCommands, config.AllowCommand{Command: "cd"})
+	cfg.DenyCommands = append(cfg.DenyCommands, config.DenyCommand{
+		Command: "cd",
+		Message: "cd is not allowed, specify directory in arguments instead",
+	})
+
+	log := logger.New()
+	validatorObj := validator.New(cfg, log)
+	safeRunner := New(cfg, validatorObj, log)
+	safeRunner.SetOutputs(io.Discard, io.Discard)
+
+	// cd should be blocked when in denyCommands (deny takes precedence)
+	t.Run("CdBlockedWhenDenied", func(t *testing.T) {
+		ctx := t.Context()
+		_, err := safeRunner.RunCommand(ctx, "cd /tmp", "/tmp")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "command \"cd\" is denied")
+	})
+
+	// cd in a chain should also be blocked
+	t.Run("CdInSerialCommandsBlockedWhenDenied", func(t *testing.T) {
+		ctx := t.Context()
+		_, err := safeRunner.RunCommand(ctx, "cd /tmp && echo hello", "/tmp")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "command \"cd\" is denied")
+	})
+}
+
+func TestSafeRunner_CdNotInAllowList(t *testing.T) {
+	cfg := setupCustomConfig()
+	// cd is not in allowCommands and not in denyCommands — should be blocked as "not permitted"
+	log := logger.New()
+	validatorObj := validator.New(cfg, log)
+	safeRunner := New(cfg, validatorObj, log)
+	safeRunner.SetOutputs(io.Discard, io.Discard)
+
+	t.Run("CdBlockedWhenNotInAllowList", func(t *testing.T) {
+		ctx := t.Context()
+		_, err := safeRunner.RunCommand(ctx, "cd /tmp", "/tmp")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "command \"cd\" is not permitted")
+	})
+}
+
+func TestSafeRunner_CdAllowed(t *testing.T) {
+	cfg := setupCustomConfig()
+	cfg.AllowCommands = append(cfg.AllowCommands, config.AllowCommand{Command: "cd"})
+
+	log := logger.New()
+	validatorObj := validator.New(cfg, log)
+	safeRunner := New(cfg, validatorObj, log)
+	safeRunner.SetOutputs(io.Discard, io.Discard)
+
+	t.Run("CdWorksWhenInAllowList", func(t *testing.T) {
+		ctx := t.Context()
+		newDir, err := safeRunner.RunCommand(ctx, "cd /tmp", "/tmp")
+		assert.NoError(t, err)
+		assert.Equal(t, "/private/tmp", newDir)
+	})
+
+	t.Run("CdBlockedForDisallowedDirectory", func(t *testing.T) {
+		ctx := t.Context()
+		_, err := safeRunner.RunCommand(ctx, "cd /etc", "/tmp")
+		assert.Error(t, err)
+	})
+}
+
 func TestSafeRunner_PipelineValidation(t *testing.T) {
 	cfg := setupCustomConfig()
 	// パイプラインテスト用にprintf コマンドを許可リストに追加

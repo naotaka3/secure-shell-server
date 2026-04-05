@@ -74,6 +74,7 @@ func newTestServer(t *testing.T) (*service.Server, string) {
 			{Command: "echo"},
 			{Command: "pwd"},
 			{Command: "ls"},
+			{Command: "cd"},
 		},
 		DenyCommands:        []config.DenyCommand{},
 		DefaultErrorMessage: "Command not allowed",

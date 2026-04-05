@@ -140,21 +140,23 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	callFunc := func(callCtx context.Context, args []string) ([]string, error) {
 		cmd := args[0]
 
-		// Handle cd as a shell builtin with directory validation
-		if cmd == "cd" {
-			return r.handleCdCall(callCtx, args, &lastCdDir)
-		}
-
 		// Normalize absolute path commands to basename for validation
 		// e.g., /usr/bin/rm → rm, so deny/allow rules match correctly
 		cmdForValidation := cmd
 		if filepath.IsAbs(cmd) {
 			cmdForValidation = filepath.Base(cmd)
 		}
+
+		// Validate all commands (including cd) through the same pipeline
 		allowed, errMsg := r.validator.ValidateCommand(cmdForValidation, args[1:], absWorkingDir)
 		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
+		}
+
+		// Handle cd as a shell builtin after validation passes
+		if cmdForValidation == "cd" {
+			return r.handleCdCall(callCtx, args, &lastCdDir)
 		}
 
 		r.logger.LogCommandAttempt(cmd, args[1:], true)
