@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -72,6 +73,8 @@ func newTestServer(t *testing.T) (*service.Server, string) {
 		AllowCommands: []config.AllowCommand{
 			{Command: "echo"},
 			{Command: "pwd"},
+			{Command: "ls"},
+			{Command: "cd"},
 		},
 		DenyCommands:        []config.DenyCommand{},
 		DefaultErrorMessage: "Command not allowed",
@@ -90,7 +93,10 @@ func TestPwd(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
 
-	t.Run("returns error when no directory set", func(t *testing.T) {
+	t.Run("returns first allowed directory as default", func(t *testing.T) {
+		// When no cd has been called and no useEnvPwd, pwd still works
+		// because run defaults to the first allowed directory.
+		// But pwd tool checks s.workingDir which is still empty initially.
 		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -98,9 +104,11 @@ func TestPwd(t *testing.T) {
 		assertToolError(t, result, "No working directory set")
 	})
 
-	t.Run("returns directory after cd", func(t *testing.T) {
-		_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": tmpDir,
+	t.Run("returns directory after cd via run", func(t *testing.T) {
+		// Use cd within run (serial mode) to set working directory
+		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
 		}))
 		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
 		if err != nil {
@@ -110,23 +118,23 @@ func TestPwd(t *testing.T) {
 	})
 }
 
-func TestCd(t *testing.T) {
+func TestCdViaRun(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
 
-	t.Run("allowed path succeeds", func(t *testing.T) {
-		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": tmpDir,
+	t.Run("cd to allowed path succeeds", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assertToolSuccess(t, result, "Working directory set to")
+		assertToolSuccess(t, result, "")
 	})
 
-	t.Run("disallowed path fails", func(t *testing.T) {
-		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": "/usr/local",
+	t.Run("cd to disallowed path fails", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd /usr/local"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -134,9 +142,9 @@ func TestCd(t *testing.T) {
 		assertToolError(t, result, "not allowed")
 	})
 
-	t.Run("nonexistent path fails", func(t *testing.T) {
-		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": tmpDir + "/nonexistent",
+	t.Run("cd to nonexistent path fails", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir + "/nonexistent"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -144,14 +152,113 @@ func TestCd(t *testing.T) {
 		assertToolError(t, result, "does not exist")
 	})
 
-	t.Run("empty string fails", func(t *testing.T) {
-		result, err := srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": "",
+	t.Run("cd without argument fails", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assertToolError(t, result, "non-empty string")
+		assertToolError(t, result, "directory argument required")
+	})
+
+	t.Run("cd - is blocked", func(t *testing.T) {
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd -"},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "not supported")
+	})
+
+	t.Run("cd persists across run calls in serial mode", func(t *testing.T) {
+		// First call: cd to tmpDir in serial mode
+		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
+		}))
+
+		// Second call: pwd should show tmpDir
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"pwd"},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, tmpDir)
+	})
+}
+
+func TestCdPersistence(t *testing.T) {
+	ctx := t.Context()
+
+	t.Run("cd with single command in parallel mode persists", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+
+		// Single command in parallel mode — safe to persist
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + freshTmpDir},
+		}))
+
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, freshTmpDir)
+	})
+
+	t.Run("cd with multiple commands in parallel mode does not persist", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+		subDir := freshTmpDir + "/parallel-sub"
+		if err := makeDir(subDir); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		// Multiple commands in parallel mode — cd should not persist
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + subDir, "echo hello"},
+		}))
+
+		// pwd should still show no working directory set
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+
+	t.Run("cd in serial mode persists", func(t *testing.T) {
+		freshSrv, freshTmpDir := newTestServer(t)
+
+		_, _ = freshSrv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + freshTmpDir},
+			"mode":     "serial",
+		}))
+
+		result, err := freshSrv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, freshTmpDir)
+	})
+
+	t.Run("cd with relative path in serial mode", func(t *testing.T) {
+		srv, tmpDir := newTestServer(t)
+		subDir := tmpDir + "/subdir"
+		if err := makeDir(subDir); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		// cd to tmpDir, then cd to relative subdir
+		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir, "cd subdir", "pwd"},
+			"mode":     "serial",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, subDir)
 	})
 }
 
@@ -159,19 +266,20 @@ func TestRunCommand(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
 
-	t.Run("run without setting directory returns error", func(t *testing.T) {
+	t.Run("run without explicit cd uses first allowed directory", func(t *testing.T) {
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"echo hello"},
 		}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		assertToolError(t, result, "No working directory set")
+		assertToolSuccess(t, result, "hello")
 	})
 
 	t.Run("single command succeeds", func(t *testing.T) {
-		_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-			"path": tmpDir,
+		_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"cd " + tmpDir},
+			"mode":     "serial",
 		}))
 		result, err := srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
 			"commands": []interface{}{"echo hello"},
@@ -229,8 +337,9 @@ func TestRunCommand(t *testing.T) {
 func TestRunCommandMultiple(t *testing.T) {
 	srv, tmpDir := newTestServer(t)
 	ctx := t.Context()
-	_, _ = srv.HandleCd(ctx, makeToolRequest(map[string]interface{}{
-		"path": tmpDir,
+	_, _ = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+		"commands": []interface{}{"cd " + tmpDir},
+		"mode":     "serial",
 	}))
 
 	t.Run("parallel default", func(t *testing.T) {
@@ -276,6 +385,104 @@ func TestRunCommandMultiple(t *testing.T) {
 	})
 }
 
+func TestUseEnvPwd(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := t.Context()
+
+	t.Run("working directory set from PWD when useEnvPwd is true", func(t *testing.T) {
+		t.Setenv("PWD", tmpDir)
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           true,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return the directory without needing cd
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, tmpDir)
+
+		// run should work without needing cd
+		result, err = srv.HandleRunCommand(ctx, makeToolRequest(map[string]interface{}{
+			"commands": []interface{}{"echo hello"},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolSuccess(t, result, "hello")
+	})
+
+	t.Run("PWD not in allowed directories is ignored", func(t *testing.T) {
+		t.Setenv("PWD", "/usr/local/not-allowed")
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           true,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return error since PWD was not in allowed dirs
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+
+	t.Run("useEnvPwd false does not set working directory", func(t *testing.T) {
+		t.Setenv("PWD", tmpDir)
+
+		cfg := &config.ShellCommandConfig{
+			AllowedDirectories: []string{tmpDir},
+			AllowCommands: []config.AllowCommand{
+				{Command: "echo"},
+			},
+			DenyCommands:        []config.DenyCommand{},
+			DefaultErrorMessage: "Command not allowed",
+			MaxExecutionTime:    10,
+			MaxOutputSize:       1024,
+			UseEnvPwd:           false,
+		}
+
+		srv, err := service.NewServer(cfg, 0, "")
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+
+		// pwd should return error since useEnvPwd is false
+		result, err := srv.HandlePwd(ctx, makeToolRequest(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertToolError(t, result, "No working directory set")
+	})
+}
+
 func assertToolError(t *testing.T, result *mcp.CallToolResult, contains string) {
 	t.Helper()
 	if !result.IsError {
@@ -306,4 +513,8 @@ func extractText(result *mcp.CallToolResult) string {
 		}
 	}
 	return sb.String()
+}
+
+func makeDir(path string) error {
+	return os.MkdirAll(path, 0o755)
 }
