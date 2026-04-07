@@ -25,6 +25,7 @@ clean: ## remove files created during build pipeline
 	rm -rf dist bin
 	rm -f coverage.*
 	rm -f '"$(shell go env GOCACHE)/../golangci-lint"'
+	GOPATH=$(GOPATH) GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) go clean -testcache
 
 .PHONY: clean-all
 clean-all: ## remove all files created during build pipeline

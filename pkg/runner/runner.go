@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -101,19 +102,21 @@ func (r *SafeRunner) GetTruncationDetails() (stdoutTruncated bool, stderrTruncat
 
 // RunCommand runs a shell command in the specified working directory.
 // It enforces security constraints by validating commands and file access.
-func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) error {
+// It returns the new working directory if cd was used (empty string if unchanged),
+// and any execution error.
+func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir string) (string, error) {
 	// Get absolute path of the working directory
 	absWorkingDir, err := filepath.Abs(workingDir)
 	if err != nil {
 		r.logger.LogErrorf("Failed to get absolute path for working directory: %v", err)
-		return fmt.Errorf("failed to get absolute path for working directory: %w", err)
+		return "", fmt.Errorf("failed to get absolute path for working directory: %w", err)
 	}
 
 	// Validate that the working directory is allowed
 	dirAllowed, dirMessage := r.validator.IsDirectoryAllowed(absWorkingDir)
 	if !dirAllowed {
 		r.logger.LogErrorf("Directory validation failed: %s", dirMessage)
-		return fmt.Errorf("directory validation failed: %s", dirMessage)
+		return "", fmt.Errorf("directory validation failed: %s", dirMessage)
 	}
 
 	// Parse the command
@@ -121,7 +124,7 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 	prog, err := parser.Parse(strings.NewReader(command), "")
 	if err != nil {
 		r.logger.LogErrorf("Parse error: %v", err)
-		return fmt.Errorf("parse error: %w", err)
+		return "", fmt.Errorf("parse error: %w", err)
 	}
 
 	// Create a timeout context if MaxExecutionTime is set
@@ -131,18 +134,29 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		ctx = timeoutCtx
 	}
 
-	callFunc := func(_ context.Context, args []string) ([]string, error) {
+	// Track the last directory set by cd
+	var lastCdDir string
+
+	callFunc := func(callCtx context.Context, args []string) ([]string, error) {
 		cmd := args[0]
+
 		// Normalize absolute path commands to basename for validation
 		// e.g., /usr/bin/rm → rm, so deny/allow rules match correctly
 		cmdForValidation := cmd
 		if filepath.IsAbs(cmd) {
 			cmdForValidation = filepath.Base(cmd)
 		}
+
+		// Validate all commands (including cd) through the same pipeline
 		allowed, errMsg := r.validator.ValidateCommand(cmdForValidation, args[1:], absWorkingDir)
 		if !allowed {
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
+		}
+
+		// Handle cd as a shell builtin after validation passes
+		if cmdForValidation == "cd" {
+			return r.handleCdCall(callCtx, args, &lastCdDir)
 		}
 
 		r.logger.LogCommandAttempt(cmd, args[1:], true)
@@ -150,53 +164,92 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 		return args, nil
 	}
 
-	// Create a custom OpenHandler for security checks
-	openHandler := func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
-		// Get absolute path of the file
-		absPath, absErr := filepath.Abs(path)
-		if absErr != nil {
-			r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
-			return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
-		}
-
-		// Resolve symlinks to prevent directory escape via symlinks
-		resolvedPath, resolveErr := filepath.EvalSymlinks(absPath)
-		if resolveErr == nil {
-			absPath = resolvedPath
-		}
-		// If EvalSymlinks fails (file doesn't exist yet), use the original absPath
-
-		// Check if file is in an allowed directory
-		// First check if the file's directory is allowed
-		fileDir := filepath.Dir(absPath)
-		allowed, disallowedMessage := r.validator.IsDirectoryAllowed(fileDir)
-
-		if !allowed {
-			r.logger.LogErrorf("File access attempted outside allowed directories: %s", absPath)
-			return nil, &os.PathError{
-				Op:   "open",
-				Path: path,
-				Err:  fmt.Errorf("access denied: file is outside allowed directories: %s", disallowedMessage),
-			}
-		}
-
-		// Delegate to the default open handler
-		return interp.DefaultOpenHandler()(ctx, path, flag, perm)
-	}
-
 	// Create interpreter
-	runner, err := interp.New(
+	interpRunner, err := interp.New(
 		interp.CallHandler(callFunc),
 		interp.StdIO(nil, r.stdout, r.stderr),
 		interp.Env(nil),
 		interp.Dir(absWorkingDir),
-		interp.OpenHandler(openHandler),
+		interp.OpenHandler(r.secureOpenHandler),
 	)
 	if err != nil {
 		r.logger.LogErrorf("Interpreter creation error: %v", err)
-		return fmt.Errorf("interpreter creation error: %w", err)
+		return "", fmt.Errorf("interpreter creation error: %w", err)
 	}
 
-	err = runner.Run(ctx, prog)
-	return err
+	err = interpRunner.Run(ctx, prog)
+	return lastCdDir, err
+}
+
+// secureOpenHandler validates file access against allowed directories before opening.
+func (r *SafeRunner) secureOpenHandler(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+	absPath, absErr := filepath.Abs(path)
+	if absErr != nil {
+		r.logger.LogErrorf("Failed to get absolute path for file %s: %v", path, absErr)
+		return nil, &os.PathError{Op: "open", Path: path, Err: absErr}
+	}
+
+	// Resolve symlinks to prevent directory escape via symlinks
+	if resolved, resolveErr := filepath.EvalSymlinks(absPath); resolveErr == nil {
+		absPath = resolved
+	}
+
+	// Check if file's directory is in the allowed list
+	fileDir := filepath.Dir(absPath)
+	allowed, msg := r.validator.IsDirectoryAllowed(fileDir)
+	if !allowed {
+		r.logger.LogErrorf("File access attempted outside allowed directories: %s", absPath)
+		return nil, &os.PathError{
+			Op:   "open",
+			Path: path,
+			Err:  fmt.Errorf("access denied: file is outside allowed directories: %s", msg),
+		}
+	}
+
+	return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+}
+
+// handleCdCall validates a cd command against allowed directories.
+// It resolves the target path relative to the interpreter's current directory,
+// checks it against the allowlist, and tracks the resolved path.
+func (r *SafeRunner) handleCdCall(ctx context.Context, args []string, lastCdDir *string) ([]string, error) {
+	if len(args) < 2 { //nolint:mnd // cd requires at least one argument
+		return args, errors.New("cd: directory argument required")
+	}
+
+	target := args[1]
+	if target == "-" {
+		return args, errors.New("cd: cd - is not supported for security reasons")
+	}
+
+	// Resolve relative paths against the interpreter's current directory
+	currentDir := interp.HandlerCtx(ctx).Dir
+	var absTarget string
+	if filepath.IsAbs(target) {
+		absTarget = filepath.Clean(target)
+	} else {
+		absTarget = filepath.Clean(filepath.Join(currentDir, target))
+	}
+
+	// Resolve symlinks to prevent directory escape
+	if resolved, resolveErr := filepath.EvalSymlinks(absTarget); resolveErr == nil {
+		absTarget = resolved
+	}
+
+	// Validate against allowed directories
+	allowed, msg := r.validator.IsDirectoryAllowed(absTarget)
+	if !allowed {
+		r.logger.LogCommandAttempt("cd", args[1:], false)
+		return args, fmt.Errorf("cd: %s", msg)
+	}
+
+	// Check directory exists
+	info, err := os.Stat(absTarget)
+	if err != nil || !info.IsDir() {
+		return args, fmt.Errorf("cd: directory does not exist: %s", absTarget)
+	}
+
+	*lastCdDir = absTarget
+	r.logger.LogCommandAttempt("cd", args[1:], true)
+	return args, nil
 }

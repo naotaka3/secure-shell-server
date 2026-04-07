@@ -41,7 +41,7 @@ func TestOutputLimiter(t *testing.T) {
 	command := "yes | head -n 50"
 
 	// Run the command
-	err := runner.RunCommand(t.Context(), command, "/tmp")
+	_, err := runner.RunCommand(t.Context(), command, "/tmp")
 
 	// Check results
 	assert.NoError(t, err)
@@ -96,7 +96,7 @@ func TestGetTruncationDetails(t *testing.T) {
 
 	// Generate output to stdout only
 	command := "yes | head -n 100"
-	err := runner.RunCommand(t.Context(), command, "/tmp")
+	_, err := runner.RunCommand(t.Context(), command, "/tmp")
 	assert.NoError(t, err)
 
 	// Check truncation details
@@ -115,7 +115,7 @@ func TestGetTruncationDetails(t *testing.T) {
 
 	// Generate output to stderr
 	command = "yes | head -n 100 >&2"
-	err = runner.RunCommand(t.Context(), command, "/tmp")
+	_, err = runner.RunCommand(t.Context(), command, "/tmp")
 	assert.NoError(t, err)
 
 	// Check truncation details again
@@ -204,7 +204,7 @@ func TestSafeRunner_RunCommand(t *testing.T) {
 			testRunner.SetOutputs(stdout, stderr)
 
 			ctx := t.Context()
-			err := testRunner.RunCommand(ctx, tt.command, tt.workingDir)
+			_, err := testRunner.RunCommand(ctx, tt.command, tt.workingDir)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RunCommand() error = %v, wantErr %v", err, tt.wantErr)
 				return
