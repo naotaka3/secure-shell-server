@@ -2,6 +2,7 @@ package runner
 
 import (
 	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/alecthomas/assert/v2"
@@ -184,7 +185,9 @@ func TestSafeRunner_CdAllowed(t *testing.T) {
 		ctx := t.Context()
 		newDir, err := safeRunner.RunCommand(ctx, "cd /tmp", "/tmp")
 		assert.NoError(t, err)
-		assert.Equal(t, "/private/tmp", newDir)
+		expected, evalErr := filepath.EvalSymlinks("/tmp")
+		assert.NoError(t, evalErr)
+		assert.Equal(t, expected, newDir)
 	})
 
 	t.Run("CdBlockedForDisallowedDirectory", func(t *testing.T) {
