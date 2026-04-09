@@ -168,6 +168,7 @@ type commandResult struct {
 	output     string
 	err        error
 	newWorkDir string // non-empty if cd changed the working directory
+	hints      []hint.Hint
 }
 
 // HandleRunCommand handles the run tool execution.
@@ -200,12 +201,6 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 		}
 	}
 
-	// Collect token-saving hints for all commands
-	var allHints []hint.Hint
-	for _, cmd := range commands {
-		allHints = append(allHints, hint.Analyze(cmd, workingDir)...)
-	}
-
 	var results []commandResult
 	if mode == modeSerial {
 		results = s.runSerial(ctx, commands, workingDir)
@@ -225,6 +220,12 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 				break
 			}
 		}
+	}
+
+	// Collect token-saving hints from runner results
+	var allHints []hint.Hint
+	for _, r := range results {
+		allHints = append(allHints, r.hints...)
 	}
 
 	return formatResultsWithHints(results, allHints), nil
@@ -292,7 +293,7 @@ func (s *Server) executeOne(ctx context.Context, command, workingDir string) com
 	if err != nil {
 		s.logger.LogErrorf("Command execution failed: %v", err)
 	}
-	return commandResult{command: command, output: buf.String(), err: err, newWorkDir: newDir}
+	return commandResult{command: command, output: buf.String(), err: err, newWorkDir: newDir, hints: r.GetHints()}
 }
 
 // formatResultsWithHints builds a tool result from command results, appending any token-saving hints.

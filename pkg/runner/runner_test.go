@@ -8,6 +8,7 @@ import (
 	"github.com/alecthomas/assert/v2"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
+	"github.com/shimizu1995/secure-shell-server/pkg/hint"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
 )
@@ -139,6 +140,70 @@ func TestGetTruncationDetails(t *testing.T) {
 	assert.False(t, stderrTruncated, "Stderr should not be truncated with no limit")
 	assert.Equal(t, 0, stdoutRemaining, "Stdout should have no remaining bytes with no limit")
 	assert.Equal(t, 0, stderrRemaining, "Stderr should have no remaining bytes with no limit")
+}
+
+func newHintTestRunner(t *testing.T, tmpDir string) *SafeRunner {
+	t.Helper()
+	cfg := &config.ShellCommandConfig{
+		AllowedDirectories:  []string{tmpDir},
+		AllowCommands:       []config.AllowCommand{{Command: "echo"}, {Command: "ls"}, {Command: "cd"}, {Command: "cat"}},
+		DenyCommands:        []config.DenyCommand{},
+		DefaultErrorMessage: "Command not allowed",
+		MaxExecutionTime:    10,
+		MaxOutputSize:       1024,
+	}
+	log := logger.New()
+	v := validator.New(cfg, log)
+	r := New(cfg, v, log)
+	r.SetOutputs(&bytes.Buffer{}, &bytes.Buffer{})
+	return r
+}
+
+func TestGetHints_RedundantCd(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := newHintTestRunner(t, tmpDir)
+
+	_, err := r.RunCommand(t.Context(), "cd "+tmpDir+" && echo hello", tmpDir)
+	assert.NoError(t, err)
+
+	hints := r.GetHints()
+	found := false
+	for _, h := range hints {
+		if h.Type == hint.RedundantCd {
+			found = true
+			assert.True(t, strings.Contains(h.Message, "[Hint]"))
+		}
+	}
+	assert.True(t, found, "expected a RedundantCd hint")
+}
+
+func TestGetHints_AbsolutePathConvertible(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := newHintTestRunner(t, tmpDir)
+
+	_, err := r.RunCommand(t.Context(), "echo "+tmpDir, tmpDir)
+	assert.NoError(t, err)
+
+	hints := r.GetHints()
+	found := false
+	for _, h := range hints {
+		if h.Type == hint.AbsolutePathConvertible {
+			found = true
+			assert.True(t, strings.Contains(h.Message, "."))
+		}
+	}
+	assert.True(t, found, "expected an AbsolutePathConvertible hint")
+}
+
+func TestGetHints_NoHintWhenNotNeeded(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := newHintTestRunner(t, tmpDir)
+
+	_, err := r.RunCommand(t.Context(), "echo hello", tmpDir)
+	assert.NoError(t, err)
+
+	hints := r.GetHints()
+	assert.Equal(t, 0, len(hints), "expected no hints")
 }
 
 func TestSafeRunner_RunCommand(t *testing.T) {

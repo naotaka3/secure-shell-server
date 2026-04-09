@@ -14,6 +14,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
+	"github.com/shimizu1995/secure-shell-server/pkg/hint"
 	"github.com/shimizu1995/secure-shell-server/pkg/limiter"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
@@ -29,6 +30,8 @@ type SafeRunner struct {
 	// Output limiters to track truncation
 	stdoutLimiter *limiter.OutputLimiter
 	stderrLimiter *limiter.OutputLimiter
+	// Token-saving hints collected during command execution
+	hints []hint.Hint
 }
 
 // New creates a new SafeRunner.
@@ -100,6 +103,11 @@ func (r *SafeRunner) GetTruncationDetails() (stdoutTruncated bool, stderrTruncat
 	return
 }
 
+// GetHints returns token-saving hints collected during command execution.
+func (r *SafeRunner) GetHints() []hint.Hint {
+	return r.hints
+}
+
 // RunCommand runs a shell command in the specified working directory.
 // It enforces security constraints by validating commands and file access.
 // It returns the new working directory if cd was used (empty string if unchanged),
@@ -153,6 +161,9 @@ func (r *SafeRunner) RunCommand(ctx context.Context, command string, workingDir 
 			r.logger.LogCommandAttempt(cmd, args[1:], false)
 			return args, fmt.Errorf("%s", errMsg)
 		}
+
+		// Collect token-saving hints
+		r.collectHints(cmdForValidation, args, absWorkingDir)
 
 		// Handle cd as a shell builtin after validation passes
 		if cmdForValidation == "cd" {
@@ -252,4 +263,49 @@ func (r *SafeRunner) handleCdCall(ctx context.Context, args []string, lastCdDir 
 	*lastCdDir = absTarget
 	r.logger.LogCommandAttempt("cd", args[1:], true)
 	return args, nil
+}
+
+// collectHints checks the parsed command and arguments for token-saving opportunities.
+func (r *SafeRunner) collectHints(cmd string, args []string, workingDir string) {
+	cleanWorking := filepath.Clean(workingDir)
+	prefix := cleanWorking + string(filepath.Separator)
+
+	// Check for redundant cd (cd to current working directory)
+	if cmd == "cd" && len(args) > 1 {
+		target := args[1]
+		cleanTarget := filepath.Clean(target)
+		if filepath.IsAbs(cleanTarget) && cleanTarget == cleanWorking {
+			r.hints = append(r.hints, hint.Hint{
+				Type: hint.RedundantCd,
+				Message: fmt.Sprintf(
+					"[Hint] The cd to %q is unnecessary — you are already in that directory.",
+					target,
+				),
+			})
+		}
+	}
+
+	// Check for absolute paths that could be relative
+	for _, arg := range args {
+		if !filepath.IsAbs(arg) {
+			continue
+		}
+		cleanArg := filepath.Clean(arg)
+		var relPath string
+		switch {
+		case cleanArg == cleanWorking:
+			relPath = "."
+		case strings.HasPrefix(cleanArg, prefix):
+			relPath = "./" + cleanArg[len(prefix):]
+		default:
+			continue
+		}
+		r.hints = append(r.hints, hint.Hint{
+			Type: hint.AbsolutePathConvertible,
+			Message: fmt.Sprintf(
+				"[Hint] %q can be shortened to %q (relative to current directory).",
+				arg, relPath,
+			),
+		})
+	}
 }

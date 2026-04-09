@@ -504,8 +504,8 @@ func TestTokenSavingHints(t *testing.T) {
 		if !strings.Contains(text, "[Hint]") {
 			t.Fatalf("expected hint in output, got: %s", text)
 		}
-		if !strings.Contains(text, "echo hello") {
-			t.Fatalf("expected suggested command in hint, got: %s", text)
+		if !strings.Contains(text, "unnecessary") {
+			t.Fatalf("expected redundant cd hint, got: %s", text)
 		}
 	})
 
