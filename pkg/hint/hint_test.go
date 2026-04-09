@@ -82,6 +82,77 @@ func TestAnalyzeRedundantCd(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAbsolutePath(t *testing.T) {
+	tests := []struct {
+		name       string
+		command    string
+		workingDir string
+		wantHint   bool
+		wantMsg    string
+	}{
+		{
+			name:       "absolute path as command can be relative",
+			command:    "/home/user/project/bin/main",
+			workingDir: "/home/user/project",
+			wantHint:   true,
+			wantMsg:    "./bin/main",
+		},
+		{
+			name:       "absolute path as argument can be relative",
+			command:    "cat /home/user/project/README.md",
+			workingDir: "/home/user/project",
+			wantHint:   true,
+			wantMsg:    "./README.md",
+		},
+		{
+			name:       "absolute path outside working dir is not flagged",
+			command:    "cat /etc/hosts",
+			workingDir: "/home/user/project",
+			wantHint:   false,
+		},
+		{
+			name:       "relative path is not flagged",
+			command:    "cat ./README.md",
+			workingDir: "/home/user/project",
+			wantHint:   false,
+		},
+		{
+			name:       "working dir path itself is flagged as .",
+			command:    "ls /home/user/project",
+			workingDir: "/home/user/project",
+			wantHint:   true,
+			wantMsg:    ".",
+		},
+		{
+			name:       "multiple absolute paths generate hints",
+			command:    "cp /home/user/project/a.txt /home/user/project/b.txt",
+			workingDir: "/home/user/project",
+			wantHint:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hints := Analyze(tt.command, tt.workingDir)
+			found := false
+			for _, h := range hints {
+				if h.Type == AbsolutePathConvertible {
+					found = true
+					if tt.wantMsg != "" && !contains(h.Message, tt.wantMsg) {
+						t.Errorf("expected hint message to contain %q, got %q", tt.wantMsg, h.Message)
+					}
+				}
+			}
+			if tt.wantHint && !found {
+				t.Errorf("expected absolute path hint, got none")
+			}
+			if !tt.wantHint && found {
+				t.Errorf("did not expect absolute path hint, but got one")
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchSubstring(s, substr)
 }

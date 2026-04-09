@@ -78,7 +78,51 @@ func checkRedundantCd(command string, workingDir string) (Hint, bool) {
 	return Hint{}, false
 }
 
-// checkAbsolutePaths is a placeholder — implemented in Task 2.
-func checkAbsolutePaths(_ string, _ string) []Hint {
-	return nil
+// checkAbsolutePaths finds absolute paths in the command that are under workingDir
+// and suggests shorter relative alternatives.
+func checkAbsolutePaths(command string, workingDir string) []Hint {
+	if workingDir == "" {
+		return nil
+	}
+
+	cleanWorking := filepath.Clean(workingDir)
+	// Ensure workingDir ends with separator for prefix matching
+	prefix := cleanWorking + string(filepath.Separator)
+
+	var hints []Hint
+	seen := make(map[string]bool)
+
+	// Split command into shell tokens (whitespace-separated).
+	// This is a simple heuristic — does not handle quoting, but covers common cases.
+	tokens := strings.Fields(command)
+	for _, token := range tokens {
+		if !filepath.IsAbs(token) {
+			continue
+		}
+
+		cleanToken := filepath.Clean(token)
+
+		if seen[cleanToken] {
+			continue
+		}
+		seen[cleanToken] = true
+
+		var relPath string
+		if cleanToken == cleanWorking {
+			relPath = "."
+		} else if strings.HasPrefix(cleanToken, prefix) {
+			relPath = "./" + cleanToken[len(prefix):]
+		} else {
+			continue
+		}
+
+		msg := fmt.Sprintf(
+			"[Hint] %q can be shortened to %q (relative to current directory). "+
+				"This saves tokens.",
+			token, relPath,
+		)
+		hints = append(hints, Hint{Type: AbsolutePathConvertible, Message: msg})
+	}
+
+	return hints
 }
