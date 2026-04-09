@@ -42,10 +42,10 @@ func TestOutputLimiter(t *testing.T) {
 	command := "yes | head -n 50"
 
 	// Run the command
-	_, err := runner.RunCommand(t.Context(), command, "/tmp")
+	result := runner.RunCommand(t.Context(), command, "/tmp")
 
 	// Check results
-	assert.NoError(t, err)
+	assert.NoError(t, result.Err)
 
 	// Verify output
 	output := stdoutBuf.String()
@@ -97,8 +97,8 @@ func TestGetTruncationDetails(t *testing.T) {
 
 	// Generate output to stdout only
 	command := "yes | head -n 100"
-	_, err := runner.RunCommand(t.Context(), command, "/tmp")
-	assert.NoError(t, err)
+	result := runner.RunCommand(t.Context(), command, "/tmp")
+	assert.NoError(t, result.Err)
 
 	// Check truncation details
 	stdoutTruncated, stderrTruncated, stdoutRemaining, stderrRemaining := runner.GetTruncationDetails()
@@ -116,8 +116,8 @@ func TestGetTruncationDetails(t *testing.T) {
 
 	// Generate output to stderr
 	command = "yes | head -n 100 >&2"
-	_, err = runner.RunCommand(t.Context(), command, "/tmp")
-	assert.NoError(t, err)
+	result = runner.RunCommand(t.Context(), command, "/tmp")
+	assert.NoError(t, result.Err)
 
 	// Check truncation details again
 	stdoutTruncated, stderrTruncated, stdoutRemaining, stderrRemaining = runner.GetTruncationDetails()
@@ -159,16 +159,15 @@ func newHintTestRunner(t *testing.T, tmpDir string) *SafeRunner {
 	return r
 }
 
-func TestGetHints_RedundantCd(t *testing.T) {
+func TestRunResult_RedundantCd(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := newHintTestRunner(t, tmpDir)
 
-	_, err := r.RunCommand(t.Context(), "cd "+tmpDir+" && echo hello", tmpDir)
-	assert.NoError(t, err)
+	result := r.RunCommand(t.Context(), "cd "+tmpDir+" && echo hello", tmpDir)
+	assert.NoError(t, result.Err)
 
-	hints := r.GetHints()
 	found := false
-	for _, h := range hints {
+	for _, h := range result.Hints {
 		if h.Type == hint.RedundantCd {
 			found = true
 			assert.True(t, strings.Contains(h.Message, "[Hint]"))
@@ -177,16 +176,15 @@ func TestGetHints_RedundantCd(t *testing.T) {
 	assert.True(t, found, "expected a RedundantCd hint")
 }
 
-func TestGetHints_AbsolutePathConvertible(t *testing.T) {
+func TestRunResult_AbsolutePathConvertible(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := newHintTestRunner(t, tmpDir)
 
-	_, err := r.RunCommand(t.Context(), "echo "+tmpDir, tmpDir)
-	assert.NoError(t, err)
+	result := r.RunCommand(t.Context(), "echo "+tmpDir, tmpDir)
+	assert.NoError(t, result.Err)
 
-	hints := r.GetHints()
 	found := false
-	for _, h := range hints {
+	for _, h := range result.Hints {
 		if h.Type == hint.AbsolutePathConvertible {
 			found = true
 			assert.True(t, strings.Contains(h.Message, "."))
@@ -195,15 +193,13 @@ func TestGetHints_AbsolutePathConvertible(t *testing.T) {
 	assert.True(t, found, "expected an AbsolutePathConvertible hint")
 }
 
-func TestGetHints_NoHintWhenNotNeeded(t *testing.T) {
+func TestRunResult_NoHintWhenNotNeeded(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := newHintTestRunner(t, tmpDir)
 
-	_, err := r.RunCommand(t.Context(), "echo hello", tmpDir)
-	assert.NoError(t, err)
-
-	hints := r.GetHints()
-	assert.Equal(t, 0, len(hints), "expected no hints")
+	result := r.RunCommand(t.Context(), "echo hello", tmpDir)
+	assert.NoError(t, result.Err)
+	assert.Equal(t, 0, len(result.Hints), "expected no hints")
 }
 
 func TestSafeRunner_RunCommand(t *testing.T) {
@@ -269,9 +265,9 @@ func TestSafeRunner_RunCommand(t *testing.T) {
 			testRunner.SetOutputs(stdout, stderr)
 
 			ctx := t.Context()
-			_, err := testRunner.RunCommand(ctx, tt.command, tt.workingDir)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RunCommand() error = %v, wantErr %v", err, tt.wantErr)
+			result := testRunner.RunCommand(ctx, tt.command, tt.workingDir)
+			if (result.Err != nil) != tt.wantErr {
+				t.Errorf("RunCommand() error = %v, wantErr %v", result.Err, tt.wantErr)
 				return
 			}
 		})
