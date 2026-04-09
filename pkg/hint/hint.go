@@ -108,11 +108,12 @@ func checkAbsolutePaths(command string, workingDir string) []Hint {
 		seen[cleanToken] = true
 
 		var relPath string
-		if cleanToken == cleanWorking {
+		switch {
+		case cleanToken == cleanWorking:
 			relPath = "."
-		} else if strings.HasPrefix(cleanToken, prefix) {
+		case strings.HasPrefix(cleanToken, prefix):
 			relPath = "./" + cleanToken[len(prefix):]
-		} else {
+		default:
 			continue
 		}
 

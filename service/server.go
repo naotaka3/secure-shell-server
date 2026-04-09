@@ -15,6 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/shimizu1995/secure-shell-server/pkg/config"
+	"github.com/shimizu1995/secure-shell-server/pkg/hint"
 	"github.com/shimizu1995/secure-shell-server/pkg/logger"
 	"github.com/shimizu1995/secure-shell-server/pkg/runner"
 	"github.com/shimizu1995/secure-shell-server/pkg/validator"
@@ -199,6 +200,12 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 		}
 	}
 
+	// Collect token-saving hints for all commands
+	var allHints []hint.Hint
+	for _, cmd := range commands {
+		allHints = append(allHints, hint.Analyze(cmd, workingDir)...)
+	}
+
 	var results []commandResult
 	if mode == modeSerial {
 		results = s.runSerial(ctx, commands, workingDir)
@@ -220,7 +227,7 @@ func (s *Server) HandleRunCommand(ctx context.Context, request mcp.CallToolReque
 		}
 	}
 
-	return formatResults(results), nil
+	return formatResultsWithHints(results, allHints), nil
 }
 
 // parseCommands extracts and validates the commands array from the request arguments.
@@ -286,6 +293,31 @@ func (s *Server) executeOne(ctx context.Context, command, workingDir string) com
 		s.logger.LogErrorf("Command execution failed: %v", err)
 	}
 	return commandResult{command: command, output: buf.String(), err: err, newWorkDir: newDir}
+}
+
+// formatResultsWithHints builds a tool result from command results, appending any token-saving hints.
+func formatResultsWithHints(results []commandResult, hints []hint.Hint) *mcp.CallToolResult {
+	result := formatResults(results)
+
+	if len(hints) == 0 {
+		return result
+	}
+
+	// Append hints to the existing text content
+	var hintText strings.Builder
+	hintText.WriteString("\n\n")
+	for _, h := range hints {
+		hintText.WriteString(h.Message)
+		hintText.WriteString("\n")
+	}
+
+	// The result content is []mcp.Content; append a new text block
+	result.Content = append(result.Content, mcp.TextContent{
+		Type: "text",
+		Text: hintText.String(),
+	})
+
+	return result
 }
 
 // formatResults builds a tool result from command results.
