@@ -193,6 +193,47 @@ func TestRunResult_AbsolutePathConvertible(t *testing.T) {
 	assert.True(t, found, "expected an AbsolutePathConvertible hint")
 }
 
+func TestRunResult_NoDuplicateHints(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := newHintTestRunner(t, tmpDir)
+
+	// "cd /dir && echo /dir" should produce exactly 1 RedundantCd hint
+	// and should NOT produce an AbsolutePathConvertible hint for the cd target
+	// (since it's already covered by the RedundantCd hint)
+	result := r.RunCommand(t.Context(), "cd "+tmpDir+" && echo hello", tmpDir)
+	assert.NoError(t, result.Err)
+
+	redundantCount := 0
+	absCount := 0
+	for _, h := range result.Hints {
+		if h.Type == hint.RedundantCd {
+			redundantCount++
+		}
+		if h.Type == hint.AbsolutePathConvertible {
+			absCount++
+		}
+	}
+	assert.Equal(t, 1, redundantCount, "expected exactly 1 RedundantCd hint")
+	assert.Equal(t, 0, absCount, "cd target should not also produce an AbsolutePathConvertible hint")
+}
+
+func TestRunResult_NoDuplicateSamePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := newHintTestRunner(t, tmpDir)
+
+	// Same absolute path used twice should only produce 1 hint
+	result := r.RunCommand(t.Context(), "echo "+tmpDir+" "+tmpDir, tmpDir)
+	assert.NoError(t, result.Err)
+
+	count := 0
+	for _, h := range result.Hints {
+		if h.Type == hint.AbsolutePathConvertible {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "same path should produce only 1 hint")
+}
+
 func TestRunResult_NoHintWhenNotNeeded(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := newHintTestRunner(t, tmpDir)

@@ -274,10 +274,12 @@ func (r *SafeRunner) collectHints(cmd string, args []string, workingDir string) 
 	prefix := cleanWorking + string(filepath.Separator)
 
 	// Check for redundant cd (cd to current working directory)
+	redundantCdTarget := ""
 	if cmd == "cd" && len(args) > 1 {
 		target := args[1]
 		cleanTarget := filepath.Clean(target)
 		if filepath.IsAbs(cleanTarget) && cleanTarget == cleanWorking {
+			redundantCdTarget = cleanTarget
 			r.hints = append(r.hints, hint.Hint{
 				Type: hint.RedundantCd,
 				Message: fmt.Sprintf(
@@ -289,11 +291,24 @@ func (r *SafeRunner) collectHints(cmd string, args []string, workingDir string) 
 	}
 
 	// Check for absolute paths that could be relative
+	seen := make(map[string]bool)
 	for _, arg := range args {
 		if !filepath.IsAbs(arg) {
 			continue
 		}
 		cleanArg := filepath.Clean(arg)
+
+		// Skip if already covered by redundant cd hint
+		if cleanArg == redundantCdTarget {
+			continue
+		}
+
+		// Skip duplicates
+		if seen[cleanArg] {
+			continue
+		}
+		seen[cleanArg] = true
+
 		var relPath string
 		switch {
 		case cleanArg == cleanWorking:
