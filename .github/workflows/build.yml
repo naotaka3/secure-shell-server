@@ -28,7 +28,7 @@ jobs:
           echo "GOMODCACHE=$HOME/go/pkg/mod" >> $GITHUB_ENV
           echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
           go-version: '^1.26.1'
